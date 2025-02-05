@@ -1,0 +1,68 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Supplier {
+  id         String    @id @default(uuid()) // ID único
+  name       String // Nombre del proveedor
+  address    String? // Dirección física (opcional)
+  city       String? // Ciudad (opcional)
+  state      String? // Estado o provincia (opcional)
+  country    String? // País (opcional)
+  zipCode    String? // Código postal (opcional)
+  websiteUrl String?   @map("website_url") // Sitio web del proveedor (opcional)
+  taxId      String?   @unique // Número de identificación fiscal (opcional, único) NIT
+  isActive   Boolean   @default(true) @map("is_active") // Si el proveedor está activo o no
+  createdAt  DateTime  @default(now()) @map("created_at") // Fecha de creación
+  updatedAt  DateTime  @updatedAt @map("updated_at") // Fecha de última actualización
+  deletedAt  DateTime? @map("deleted_at") // Marca la eliminación lógica (null si no está eliminado)
+
+  contactInfo ContactInfo[] // Relación con ContactInfo
+
+  @@map("suppliers")
+}
+
+enum PhoneType {
+  MOBILE // Teléfono móvil
+  LANDLINE // Teléfono fijo
+  WHATSAPP // WhatsApp
+  OTHER // Otros
+}
+
+enum ContactPosition {
+  SALES // Ventas
+  SUPPORT // Soporte técnico
+  MANAGER // Gerente
+  ADMINISTRATOR // Administrador
+  OTHER // Otros
+}
+
+model ContactInfo {
+  id          Int             @id @default(autoincrement())
+  supplierId  String          @map("supplier_id") // ID del proveedor asociado
+  supplier    Supplier        @relation(fields: [supplierId], references: [id])
+  contactName String          @map("contact_name") // Nombre de la persona de contacto (opcional)
+  email       String?         @unique // Email (opcional, único)
+  phoneNumber String?         @map("phone_number") // Número de teléfono
+  phoneType   PhoneType?      @map("phone_type") // Tipo de teléfono (enum)
+  position    ContactPosition @default(OTHER) @map("position") // Rol o posición del contacto (enum)
+  isPrimary   Boolean         @default(false) @map("is_primary") // Indica si es el contacto principal
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  // Restricciones únicas
+  @@unique([supplierId, email]) // Un proveedor no puede tener dos contactos con el mismo email
+  @@unique([supplierId, phoneNumber]) // Un proveedor no puede tener dos contactos con el mismo teléfono
+  @@map("contact_info")
+}

@@ -1,0 +1,14 @@
+services:
+  pv-branches-db-postgres:
+    image: postgres
+    container_name: branches_database
+    environment:
+      POSTGRES_DB: branches
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5434:5432
+    volumes:
+      - ./postgres:/var/lib/postgres/data
+
+# Ejecutar docker docker compose up -d

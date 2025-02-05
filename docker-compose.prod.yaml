@@ -1,0 +1,66 @@
+name: pv-microservices
+services:
+
+# ====== NATS SERVER =====
+  # Servicio para ejecutar el servidor de mensajería NATS
+  nats-server:
+    # Usa la imagen oficial más reciente de NATS
+    image: nats:latest
+    # Nombre del contenedor para identificarlo fácilmente
+    container_name: pv-nats-server
+    # Mapea los puertos locales a los del contenedor
+    ports:
+      - "8222:8222" # Puerto para la interfaz de administración de NATS
+      - "4222:4222" # Puerto para las conexiones de cliente a NATS
+  pv-auth-db-postgres:
+    image: postgres
+    container_name: pv_auth_database
+    environment:
+      POSTGRES_DB: auth
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+
+    ports:
+      - 5433:5432
+
+    volumes:
+      - ./pv-auth-ms/postgres:/var/lib/postgresql/data
+
+  pv-branches-db-postgres:
+    image: postgres
+    container_name: pv_branches_database
+    environment:
+      POSTGRES_DB: branches
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5434:5432
+    volumes:
+      - ./pv-branches-ms/postgres:/var/lib/postgres/data
+
+  pv-products-db-postgres:
+    image: postgres
+    container_name: pv_products_database
+    environment:
+      POSTGRES_DB: products
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5432:5432
+    volumes:
+      - ./pv-products-ms/postgres:/var/lib/postgresql/data
+
+  pv-warehouses-db-postgres:
+    image: postgres
+    container_name: pv_warehouses_database
+    environment:
+      POSTGRES_DB: warehouses
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5435:5432
+    volumes:
+      - ./pv-warehouses-ms/postgres:/var/lib/postgresql/data
+
+# Ejecutar docker docker compose up -d
+# docker compose -f docker-compose.prod.yaml up 

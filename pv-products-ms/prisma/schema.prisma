@@ -1,0 +1,158 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductType {
+  RawMaterial // Insumo
+  FinalProduct // Producto final
+  Ingredient // Ingrediente
+}
+
+model Unit {
+  id           String   @id @default(uuid()) // El identificador único de la unidad
+  name         String   @unique @db.VarChar(100) // Nombre completo de la unidad (Ej. "Kilogramo", "Litro")
+  abbreviation String   @unique @db.VarChar(10) // Abreviatura de la unidad (Ej. "kg", "L")
+  createdAt    DateTime @default(now()) // Fecha de creación
+  updatedAt    DateTime @updatedAt // Fecha de última actualización
+
+  // Relación con los productos
+  products Product[] @relation()
+
+  @@map("units") // Mapea este modelo a la tabla 'units' en la base de datos
+}
+
+model Product {
+  id             String      @id @default(uuid()) // El identificador único del producto, generado como UUID
+  name           String      @unique @db.VarChar(100) // Nombre del producto, único en la base de datos
+  description    String // Descripción del producto
+  slug           String      @unique
+  type           ProductType // Tipo de producto, hace referencia a un enum 'ProductType' (debes definir este enum)
+  price          Decimal     @db.Decimal(10, 2) // Precio del producto, con precisión de 10 dígitos y 2 decimales
+  // stock          Decimal     @db.Decimal(10, 2) // Cantidad total en stock del producto
+  imageUrl       String?     @map("image_url") // URL de la imagen del producto
+  lastSaleDate   DateTime?   @map("last_sale_date") // Fecha de la última venta del producto, puede ser nula si no se ha vendido
+  launchDate     DateTime?   @map("launch_date") // Fecha de lanzamiento del producto, puede ser nula si no tiene una fecha de lanzamiento
+  expirationDate DateTime?   @map("expiration_date") // Fecha de expiración del producto, puede ser nula si no aplica
+  isEnable       Boolean     @default(true) @map("is_enable") // Indica si el producto está habilitado o no
+
+  unitId String @map("unit_id") // ID de la unidad de medida (relacionado con la tabla 'Units')
+  unit   Unit   @relation(fields: [unitId], references: [id])
+
+  // Relación de muchos a muchos con 'Category'
+  categories Category[] @relation("product_categories")
+
+  // Relación con la composición de productos (productos que componen otros productos)
+  // Compone los productos...
+  composesProducts   ProductComposition[] @relation("composes_products")
+  // Relación con los insumos de productos (productos que componen el producto)
+  // Compuesto por los productos...
+  composedByProducts ProductComposition[] @relation("composed_by_products")
+
+  // Campos adicional relacionado con el costo
+  purchasePrice Decimal @map("purchase_price") @db.Decimal(10, 2) // Precio de compra del producto
+
+  // Relación con la temporada (si el producto pertenece a una temporada)
+  seasonId String? @map("season_id") // Referencia a la temporada
+  season   Season? @relation("product_seasons", fields: [seasonId], references: [id])
+
+  branchProductInventory BranchProductInventory[] // relacion con los stocks por sucursal
+
+  createdAt DateTime @default(now()) @map("created_at") // Fecha de creación del producto, asignada automáticamente con la fecha actual
+  updatedAt DateTime @updatedAt @map("updated_at") // Fecha de la última actualización del producto, asignada automáticamente en cada cambio
+
+  @@map("products") // Mapea este modelo a la tabla 'products' en la base de datos
+}
+
+model Season {
+  id          String   @id @default(uuid()) // Identificador único de la temporada
+  name        String   @unique @db.VarChar(100) // Nombre de la temporada (Ej. "Verano 2024")
+  startDate   DateTime // Fecha de inicio de la temporada
+  endDate     DateTime // Fecha de finalización de la temporada
+  description String?  @db.Text // Descripción de la temporada (opcional)
+
+  // Relación con la tabla de productos (muchos productos pueden estar en una temporada)
+  products Product[] @relation("product_seasons")
+
+  createdAt DateTime @default(now()) // Fecha de creación
+  updatedAt DateTime @updatedAt // Fecha de última actualización
+
+  @@map("seasons")
+}
+
+model Category {
+  id          String   @id @default(uuid()) // El campo 'id' es la clave primaria, con un valor único generado por UUID por defecto
+  name        String   @unique @db.VarChar(100) // El campo 'name' es único y tiene una longitud máxima de 100 caracteres
+  description String // El campo 'description' es de tipo texto, sin límite de longitud
+  slug        String   @unique
+  imageUrl    String?  @map("image_url") // El campo 'imageUrl' es opcional (indicado por '?'), y se usa para almacenar la URL de la imagen de la categoría
+  createdAt   DateTime @default(now()) @map("created_at") // Fecha de creación
+  updatedAt   DateTime @updatedAt @map("updated_at") // Fecha de la última actualización
+
+  products Product[] @relation("product_categories") // Relación de muchos a muchos con 'Product'
+
+  subcategories CategoryHierarchy[] @relation("CategoryToSubcategories") // Relación con subcategorías (hijos)
+  parents       CategoryHierarchy[] @relation("CategoryToParents") // Relación con padres (muchos a muchos)
+
+  @@map("categories")
+}
+
+model CategoryHierarchy {
+  id         String @id @default(uuid()) // Clave primaria generada por UUID
+  categoryId String // Clave foránea hacia Category
+  parentId   String // Clave foránea hacia Category (padre)
+
+  category Category @relation("CategoryToParents", fields: [categoryId], references: [id]) // Relación con la categoría hija
+  parent   Category @relation("CategoryToSubcategories", fields: [parentId], references: [id]) // Relación con la categoría padre
+
+  @@map("category_hierarchy")
+}
+
+model ProductComposition {
+  compositionId      Int      @id @default(autoincrement()) // ID único para la composición
+  productId          String   @map("product_id") // ID del producto compuesto
+  componentProductId String   @map("component_product_id") // ID del insumo (materia prima) que forma parte del producto compuesto
+  quantity           Decimal  @db.Decimal(10, 2) // Cantidad del componente necesaria
+  createdAt          DateTime @default(now()) @map("created_at") // Fecha de creación de la relación
+  updatedAt          DateTime @updatedAt @map("updated_at") // Fecha de la última actualización
+
+  product          Product @relation("composed_by_products", fields: [productId], references: [id]) // Relación con el producto compuesto
+  componentProduct Product @relation("composes_products", fields: [componentProductId], references: [id]) // Relación con el insumo (materia prima)
+
+  @@map("composes_products") // Mapea a la tabla 'composes_products'
+}
+
+model BranchProductInventory {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  branchId  String   @map("branch_id")
+  stock     Decimal  @db.Decimal(10, 2)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Campos relacionados con inventario y logística
+  minimumStock  Decimal @map("minimun_stock") @db.Decimal(10, 2) // Stock mínimo recomendado antes de realizar un nuevo pedido o preparación
+  reorderPoint  Decimal @map("reorder_point") @db.Decimal(10, 2) // Nivel de stock que activa una alerta para reabastecimiento
+  warehouseId String? @map("warehouse_id") // Ubicación física dentro del almacén (zona fría, estantería, congelador, etc.)
+  // ultima actualizacion de stock
+  lastStockUpdate DateTime @default(now()) @map("last_stock_update")
+
+  // precio de compra si una sucursal es en otra ciudad
+  purchasePriceOverride Decimal? @db.Decimal(10, 2) // Precio de compra específico para esta sucursal
+  // Precio de venta por sucursal opcional
+  priceOverride Decimal? @db.Decimal(10, 2) // Precio de compra específico para esta sucursal
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, branchId]) // Un producto solo puede tener un stock único por sucursal
+  @@map("branch_product_inventory")
+}
