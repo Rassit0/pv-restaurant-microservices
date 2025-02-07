@@ -1,11 +1,15 @@
-import { Type } from "class-transformer";
-import { IsEnum, IsOptional, IsPositive, IsString, Min } from "class-validator";
+import { Transform, Type } from "class-transformer";
+import { IsEnum, IsInt, IsNumberString, IsOptional, IsPositive, IsString, Min, ValidateIf } from "class-validator";
 
 // Opcional: Si deseas definir un conjunto de valores posibles para el `status`
 enum Status {
     Active = 'active',
     Inactive = 'inactive',
     All = 'all'
+}
+
+export enum LimitEnum {
+    ALL = 'all',
 }
 
 export class UsersPaginationDto {
@@ -15,9 +19,10 @@ export class UsersPaginationDto {
     page?: number = 1;
 
     @IsOptional()
-    @Min(0)
-    @Type(() => Number) // Obtiene el valor y lo vuelve número
-    limit?: number = 0;
+    @Type(() => Number)
+    @IsInt({ message: 'El límite debe ser un número entero.' })
+    @Min(1, { message: 'El límite no puede ser menor a 1.' })
+    limit?: number;
 
     @IsString()
     @IsOptional()

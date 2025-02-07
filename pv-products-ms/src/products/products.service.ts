@@ -25,10 +25,22 @@ export class ProductsService {
       // Desestructuramos el DTO para extraer las propiedades de tipo array
       const {
         categories,
-        composedByProducts,
         branchProductInventory,
         ...productData // El resto de las propiedades se asignan a productData
       } = createProductDto;
+
+      const productExists = await this.prisma.product.findUnique({
+        where: {
+          name: productData.name.toLowerCase()
+        }
+      });
+      
+      if(productExists){
+        throw new RpcException({
+          message: "El nombre del producto ya está en uso.",
+          statusCode: HttpStatus.BAD_REQUEST
+        });
+      }
 
       if (branchProductInventory) {
         // Verificar si hay duplicados en branchProductInventory
@@ -71,15 +83,6 @@ export class ProductsService {
         data: {
           ...productData,
           slug: slugify(productData.name),
-          // Crear la tabla intermedia
-          composedByProducts: {
-            create: createProductDto.composedByProducts.map(composition => ({
-              quantity: composition.quantity,
-              componentProduct: {
-                connect: { id: composition.composedProductId }
-              }, // O la relación que necesites
-            })),
-          },
           // Relacionar categorías
           categories: {
             connect: categories.map(category => ({
@@ -102,18 +105,6 @@ export class ProductsService {
         },
         include: {
           categories: true,
-          composesProducts: {
-            select: {
-              product: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-              quantity: true,
-            }
-          },
-          composedByProducts: {
-            select: {
-              componentProduct: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-              quantity: true,
-            }
-          }
         }
       });
 
@@ -144,7 +135,7 @@ export class ProductsService {
 
     const products = await this.prisma.product.findMany({
       skip, // Desplazamiento para la paginación
-      take: limit !== 0 ? limit : undefined, // si es 0 devuelve todo
+      take: limit? limit : undefined, // si es 0 devuelve todo
       orderBy: {
         name: 'asc'
       },
@@ -171,19 +162,7 @@ export class ProductsService {
       include: {
         unit: true,
         categories: true,
-        composesProducts: {
-          select: {
-            product: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-            quantity: true,
-          }
-        },
-        composedByProducts: {
-          select: {
-            componentProduct: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-            quantity: true,
-          }
-        },
-        branchProductInventory: true
+        branchProductInventory: true,
       }
     });
 
@@ -215,7 +194,7 @@ export class ProductsService {
       meta: {
         totalItems, // Total de productos encontrados
         itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
-        totalPages: limit !== 0 ? Math.ceil(totalItems / limit) : 1, // Total de páginas
+        totalPages: limit? Math.ceil(totalItems / limit) : 1, // Total de páginas
         currentPage: page, // Página actual
       }
     };
@@ -232,18 +211,7 @@ export class ProductsService {
       include: {
         unit: true,
         categories: true,
-        composesProducts: {
-          select: {
-            product: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-            quantity: true,
-          }
-        },
-        composedByProducts: {
-          select: {
-            componentProduct: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-            quantity: true,
-          }
-        }
+        branchProductInventory: true,
       }
     });
 
@@ -293,7 +261,6 @@ export class ProductsService {
       // Desestructuramos el DTO para extraer las propiedades de tipo array
       const {
         categories,
-        composedByProducts,
         branchProductInventory,
         unitId,
         ...productData // El resto de las propiedades se asignan a productData
@@ -354,22 +321,6 @@ export class ProductsService {
               }))
             }
           }),
-          ...(updateProductDto.composedByProducts && {
-            // tabla donde aparece como relacion el id (compone los productos...)
-            composedByProducts: {
-              // Eliminar composiciones las composiciones para agregar las nuevas
-              deleteMany: {
-                productId: id
-              },
-              // Crear nuevas composiciones
-              createMany: {
-                data: updateProductDto.composedByProducts.map(composition => ({
-                  componentProductId: composition.composedProductId,
-                  quantity: composition.quantity
-                }))
-              }
-            }
-          }),
           ...(branchProductInventory && {
             branchProductInventory: {
               deleteMany: {
@@ -384,18 +335,6 @@ export class ProductsService {
         include: {
           unit: true,
           categories: true,
-          composesProducts: {
-            select: {
-              product: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-              quantity: true,
-            }
-          },
-          composedByProducts: {
-            select: {
-              componentProduct: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-              quantity: true,
-            }
-          }
         }
       });
 
@@ -427,19 +366,7 @@ export class ProductsService {
       include: {
         unit: true,
         categories: true,
-        composesProducts: {
-          select: {
-            product: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-            quantity: true,
-          }
-        },
-        composedByProducts: {
-          select: {
-            componentProduct: { select: { id: true, name: true, unit: { select: { name: true, abbreviation: true } } } },
-            quantity: true,
-          }
-        }
-
+        branchProductInventory: true,
       }
     });
 
@@ -453,21 +380,14 @@ export class ProductsService {
 
     // Verifica si el producto tiene relaciones que lo bloquean para ser eliminado
     if (
-      recordExists.composesProducts.length > 0 //|| // Tiene composiciones
+      recordExists.branchProductInventory.length > 0 //|| // Tiene composiciones
       // (recordExists.orders && recordExists.orders.length > 0) // Relación con órdenes (si aplica)
     ) {
       throw new RpcException({
-        message: "No se puede eliminar el producto porque está relacionado con otras entidades",
+        message: "No se puede eliminar el producto porque contiene información.",
         statusCode: HttpStatus.CONFLICT, // Envia el código 409 (conflicto)
       });
     }
-
-    // Elimina las relaciones de 'productCompositions' primero
-    await this.prisma.productComposition.deleteMany({
-      where: {
-        productId: id, // Elimina todas las composiciones asociadas al producto
-      },
-    });
 
     // Elimina el registro encontrado en la BD usando el ID
     await this.prisma.product.delete({

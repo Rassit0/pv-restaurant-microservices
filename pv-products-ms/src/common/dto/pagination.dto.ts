@@ -12,7 +12,7 @@ export class PaginationDto {
     @IsOptional()
     @Min(0)
     @Type(() => Number) // Obtiene el valor y lo vuelve número
-    limit?: number = 0;
+    limit?: number;
 
     @IsString()
     @IsOptional()

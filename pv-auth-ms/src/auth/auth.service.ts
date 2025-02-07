@@ -146,11 +146,11 @@ export class AuthService {
       const { limit, page, search, status } = paginationDto;
 
       // Calcular el offset para la paginación
-      const skip = (page - 1) * limit;
+      const skip = limit? (page - 1) * limit : undefined;
 
       const users = await this.prisma.user.findMany({
         skip,
-        take: limit !== 0 ? limit : undefined, // si es 0 devuelve todo
+        take: limit? limit : undefined, // si es 0 devuelve todo
         orderBy: { email: 'asc' },
         where: {
           OR: search
@@ -159,8 +159,8 @@ export class AuthService {
               { email: { contains: search, mode: 'insensitive' } },
             ]
             : undefined, // Si no hay search, no se agrega ningun filtro
-            // Filtro para el campo status (si está presente en el DTO)
-            ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
+          // Filtro para el campo status (si está presente en el DTO)
+          ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
         },
         select: {
           id: true,
@@ -197,12 +197,13 @@ export class AuthService {
         meta: {
           totalItems,
           itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
-          totalPages: limit !== 0 ? Math.ceil(totalItems / limit) : 1, // Total de páginas
+          totalPages: limit? Math.ceil(totalItems / limit) : 1, // Total de páginas
           currentPage: page, // Página actual
         }
       }
     } catch (error) {
-      console.log(error)
+      console.log(error);
+      if (error instanceof RpcException) throw error;
       throw new RpcException({
         message: 'No se pudo obtener los usuarios',
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR

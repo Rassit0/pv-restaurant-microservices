@@ -52,13 +52,6 @@ model Product {
   // Relación de muchos a muchos con 'Category'
   categories Category[] @relation("product_categories")
 
-  // Relación con la composición de productos (productos que componen otros productos)
-  // Compone los productos...
-  composesProducts   ProductComposition[] @relation("composes_products")
-  // Relación con los insumos de productos (productos que componen el producto)
-  // Compuesto por los productos...
-  composedByProducts ProductComposition[] @relation("composed_by_products")
-
   // Campos adicional relacionado con el costo
   purchasePrice Decimal @map("purchase_price") @db.Decimal(10, 2) // Precio de compra del producto
 
@@ -116,20 +109,6 @@ model CategoryHierarchy {
   parent   Category @relation("CategoryToSubcategories", fields: [parentId], references: [id]) // Relación con la categoría padre
 
   @@map("category_hierarchy")
-}
-
-model ProductComposition {
-  compositionId      Int      @id @default(autoincrement()) // ID único para la composición
-  productId          String   @map("product_id") // ID del producto compuesto
-  componentProductId String   @map("component_product_id") // ID del insumo (materia prima) que forma parte del producto compuesto
-  quantity           Decimal  @db.Decimal(10, 2) // Cantidad del componente necesaria
-  createdAt          DateTime @default(now()) @map("created_at") // Fecha de creación de la relación
-  updatedAt          DateTime @updatedAt @map("updated_at") // Fecha de la última actualización
-
-  product          Product @relation("composed_by_products", fields: [productId], references: [id]) // Relación con el producto compuesto
-  componentProduct Product @relation("composes_products", fields: [componentProductId], references: [id]) // Relación con el insumo (materia prima)
-
-  @@map("composes_products") // Mapea a la tabla 'composes_products'
 }
 
 model BranchProductInventory {

@@ -130,6 +130,9 @@ export class WarehousesService {
             }
           },
         },
+        orderBy:{
+          name: 'asc'
+        }
       });
 
       const branchIds = [

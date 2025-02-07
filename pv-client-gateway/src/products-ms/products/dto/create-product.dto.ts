@@ -95,14 +95,6 @@ export class CreateProductDto {
     @IsString({ message: "El ID de la temporada debe ser un texto válido." })
     seasonId?: string;
 
-    // @ArrayMinSize(1, { message: "Debe agregar minimo un insumo" })
-    @IsArray({ message: "Debe agregar los insumos" })
-    // Valida que sea un arreglo.
-    @ValidateNested({ each: true, message: "Cada valor en la propiedad anidada productCompositions debe ser un objeto o una matriz." }) // Esto es necesario para que `class-transformer` convierta el arreglo de objetos en instancias de CategoryDto
-    @IsOptional()
-    @Type(() => ComposedByProductsDto)
-    composedByProducts: ComposedByProductsDto[]
-
     @IsOptional()
     @IsArray({ message: "Debe agregar el inventario por sucursal." })
     @ValidateNested({ each: true })
