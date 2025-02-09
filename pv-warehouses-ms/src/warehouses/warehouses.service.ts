@@ -130,7 +130,7 @@ export class WarehousesService {
             }
           },
         },
-        orderBy:{
+        orderBy: {
           name: 'asc'
         }
       });
@@ -194,7 +194,21 @@ export class WarehousesService {
         });
       }
 
-      return warehouse;
+      const branchIds = [
+        ...new Set(warehouse.branches.map(b => b.branchId)),
+      ];
+
+      // Enviar la solicitud al ms de branches para obtener los branches por los ids
+      const branches = await firstValueFrom(this.natsClient.send('get_branches_by_ids', branchIds));
+
+
+      return {
+        ...warehouse,
+        branches: warehouse.branches.map(branch => ({
+          ...branch,
+          details: branches.find(b => b.id === branch.branchId) || null, // Añadir datos completos de la sucursal
+        }))
+      };
     } catch (error) {
       console.log('Error al obtener el almacén', error);
       throw new RpcException({
@@ -393,6 +407,26 @@ export class WarehousesService {
         message: 'Error al eliminar el almacén.',
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       })
+    }
+  }
+
+  async getWarehousesByBranchId(branchId: string) {
+    try {
+      // Consultar los almaecenes en la db
+      const warehouses = await this.prisma.warehouse.findMany({
+        where: {
+          branches: {
+            some: {
+              branchId
+            }
+          }
+        }
+      });
+
+      return warehouses;
+    } catch (error) {
+      console.log('Error al obtener las sucursales', error);
+      return [];
     }
   }
 }

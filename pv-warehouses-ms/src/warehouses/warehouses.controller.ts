@@ -32,4 +32,9 @@ export class WarehousesController {
   remove(@Payload() id: string) {
     return this.warehousesService.remove(id);
   }
+
+  @MessagePattern('get_warehouses_by_branch_id')
+  getWarehousesByBranchId(@Payload() branchId: string) {
+    return this.warehousesService.getWarehousesByBranchId(branchId);
+  }
 }

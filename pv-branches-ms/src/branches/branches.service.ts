@@ -66,8 +66,16 @@ export class BranchesService {
       }
     });
 
+    // Obtener almacenes para cada sucursal
+    const branchesWithWarehouses = await Promise.all(
+      branches.map(async (branch) => {
+        const warehouses = await firstValueFrom(this.natsClient.send('get_warehouses_by_branch_id', branch.id));;
+        return { ...branch, warehouses };
+      })
+    );
+
     return {
-      branches,
+      branches: branchesWithWarehouses,
     }
   }
 
@@ -83,8 +91,8 @@ export class BranchesService {
           statusCode: HttpStatus.NOT_FOUND
         })
       }
-
-      return branch;
+      const warehouses = await firstValueFrom(this.natsClient.send('get_warehouses_by_branch_id', branch.id));;
+      return { ...branch, warehouses };
     } catch (error) {
       if (error instanceof RpcException) throw error;
       console.log(error);
