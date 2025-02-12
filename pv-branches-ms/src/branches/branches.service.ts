@@ -69,8 +69,30 @@ export class BranchesService {
     // Obtener almacenes para cada sucursal
     const branchesWithWarehouses = await Promise.all(
       branches.map(async (branch) => {
-        const warehouses = await firstValueFrom(this.natsClient.send('get_warehouses_by_branch_id', branch.id));;
-        return { ...branch, warehouses };
+        const warehouses = await firstValueFrom(this.natsClient.send('get_warehouses_by_branch_id', branch.id));
+        // Enviar solicitud al servicio de sucursales para validar los branchIds
+        const manager = await firstValueFrom(
+          this.natsClient.send('auth.user.findOne', branch.managerId).pipe(
+            catchError(error => {
+              console.error('Error capturado al enviar mensaje:', error);
+
+              // Si el error tiene message y statusCode, convertirlo en un RpcException
+              if (error?.message && error?.statusCode) {
+                throw new RpcException({
+                  message: error.message,
+                  statusCode: error.statusCode,
+                });
+              }
+
+              // Si no tiene estas propiedades, lanzar un RpcException genérico
+              throw new RpcException({
+                message: 'Error desconocido al comunicarse con el servicio de sucursales.',
+                statusCode: 500, // Internal Server Error
+              });
+            })
+          )
+        );
+        return { ...branch, manager, warehouses };
       })
     );
 

@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsEnum, IsOptional, IsPositive, IsString } from "class-validator";
+import { IsEnum, IsIn, IsOptional, IsPositive, IsString } from "class-validator";
 import { PaginationDto } from "src/common/dto/pagination.dto";
 
 // Opcional: Si deseas definir un conjunto de valores posibles para el `status`
@@ -34,4 +34,14 @@ export class ProductPaginationDto extends PaginationDto {
     @IsPositive()
     @Type(() => Number)
     maxPrice?: number;
+
+    @IsString()
+    @IsOptional()
+    @IsIn(['asc', 'desc'], { message: "El orden debe ser 'asc' o 'desc'." })
+    orderBy: 'asc' | 'desc' = 'asc';
+
+    @IsString()
+    @IsOptional()
+    @IsIn(['name', 'description', 'createdAt'], { message: "La columna de ordenamiento debe ser 'name', 'description' o 'createdAt'." })
+    columnOrderBy: 'name' | 'description' | 'createdAt' = 'name';
 }

@@ -5,7 +5,7 @@ import { NATS_SERVICE } from 'src/config';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { catchError } from 'rxjs';
 
-@Controller('roles')
+@Controller('auth/roles')
 export class RolesController {
   constructor(
     @Inject(NATS_SERVICE) private readonly client: ClientProxy

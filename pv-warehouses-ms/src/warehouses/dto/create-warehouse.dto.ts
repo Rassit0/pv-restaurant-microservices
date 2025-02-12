@@ -1,4 +1,4 @@
-import { IsArray, IsDefined, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateIf, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsDefined, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateIf, ValidateNested } from "class-validator";
 import { WarehouseBranchDto } from "./warehouse-branch.dto";
 import { Type } from "class-transformer";
 import { UsersAccess } from "./user-access.dto";
@@ -23,6 +23,10 @@ export class CreateWarehouseDto {
     @IsOptional()
     @IsString({ message: "La URL de la imagen(imageUrl) debe ser un texto válido." })
     imageUrl?: string;
+
+    @IsOptional()
+    @IsBoolean({ message: 'El valor deve ser verdadero o falso.' })
+    isEnable?: boolean;
 
     @IsOptional()
     @IsArray({ message: 'Debe agregar las sucursales que usarán el almacen.' })

@@ -3,6 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { WarehousesService } from './warehouses.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
+import { WarehousePaginationDto } from './dto/warehouse-pagination';
 
 @Controller()
 export class WarehousesController {
@@ -14,8 +15,8 @@ export class WarehousesController {
   }
 
   @MessagePattern('findAllWarehouses')
-  findAll() {
-    return this.warehousesService.findAll();
+  findAll(@Payload() pagination: WarehousePaginationDto) {
+    return this.warehousesService.findAll(pagination);
   }
 
   @MessagePattern('findOneWarehouse')

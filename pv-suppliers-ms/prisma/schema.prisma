@@ -49,17 +49,19 @@ enum ContactPosition {
 }
 
 model ContactInfo {
-  id          Int             @id @default(autoincrement())
-  supplierId  String          @map("supplier_id") // ID del proveedor asociado
-  supplier    Supplier        @relation(fields: [supplierId], references: [id])
-  contactName String          @map("contact_name") // Nombre de la persona de contacto (opcional)
-  email       String?         @unique // Email (opcional, único)
-  phoneNumber String?         @map("phone_number") // Número de teléfono
-  phoneType   PhoneType?      @map("phone_type") // Tipo de teléfono (enum)
-  position    ContactPosition @default(OTHER) @map("position") // Rol o posición del contacto (enum)
-  isPrimary   Boolean         @default(false) @map("is_primary") // Indica si es el contacto principal
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  id             Int             @id @default(autoincrement())
+  supplierId     String          @map("supplier_id") // ID del proveedor asociado
+  supplier       Supplier        @relation(fields: [supplierId], references: [id])
+  contactName    String          @map("contact_name") // Nombre de la persona de contacto (opcional)
+  lastname       String? // Primer apellido
+  secondLastname String?         @map("secont_lastname") // Segundo apellido
+  email          String?         @unique // Email (opcional, único)
+  phoneNumber    String?         @map("phone_number") // Número de teléfono
+  phoneType      PhoneType?      @map("phone_type") // Tipo de teléfono (enum)
+  position       ContactPosition @default(OTHER) @map("position") // Rol o posición del contacto (enum)
+  isPrimary      Boolean         @default(false) @map("is_primary") // Indica si es el contacto principal
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
   // Restricciones únicas
   @@unique([supplierId, email]) // Un proveedor no puede tener dos contactos con el mismo email

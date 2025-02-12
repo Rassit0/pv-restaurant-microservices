@@ -263,7 +263,7 @@ export class SuppliersService {
                 ].filter(Boolean), // Filtrar los valores undefined
                 ...(contact.id && {
                   NOT: {
-                    supplierId: id, // Excluir el proveedor actual
+                    id: contact.id, // Excluir el proveedor actual
                   }
                 })
               }

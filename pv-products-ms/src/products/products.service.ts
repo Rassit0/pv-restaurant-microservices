@@ -5,7 +5,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CategoriesService } from 'src/categories/categories.service';
 import { slugify } from 'src/common/helpers/slugify';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
-import { contains } from 'class-validator';
+import { contains, equals } from 'class-validator';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { ProductType } from '@prisma/client';
 import { ProductPaginationDto } from './dto/product-pagination.dto';
@@ -26,6 +26,7 @@ export class ProductsService {
       const {
         categories,
         branchProductInventory,
+        typesProduct,
         ...productData // El resto de las propiedades se asignan a productData
       } = createProductDto;
 
@@ -34,8 +35,8 @@ export class ProductsService {
           name: productData.name.toLowerCase()
         }
       });
-      
-      if(productExists){
+
+      if (productExists) {
         throw new RpcException({
           message: "El nombre del producto ya está en uso.",
           statusCode: HttpStatus.BAD_REQUEST
@@ -102,6 +103,11 @@ export class ProductsService {
               }))
             }
             : undefined,
+          types: {
+            create: typesProduct.map((type) => ({
+              type: type
+            }))
+          },
         },
         include: {
           categories: true,
@@ -121,13 +127,13 @@ export class ProductsService {
   async findAll(paginationDto: ProductPaginationDto) {
 
     // Método para obtener todos los productos con paginación y búsqueda opcional.
-    const { limit, page, search, status, branchId } = paginationDto;
+    const { limit, page, search, status, branchId, orderBy, columnOrderBy } = paginationDto;
     // 'limit': Número máximo de productos por página
     // 'page' : Número de la página actual.
     // 'search' : Texto opcional para filtrar los productos.
 
     // Calcular el offset para la paginación
-    const skip = (page - 1) * limit;
+    const skip = limit ? (page - 1) * limit : undefined;
 
     const isValidProductType = (value: string): value is ProductType => {
       return Object.values(ProductType).includes(value as ProductType);
@@ -135,9 +141,9 @@ export class ProductsService {
 
     const products = await this.prisma.product.findMany({
       skip, // Desplazamiento para la paginación
-      take: limit? limit : undefined, // si es 0 devuelve todo
+      take: limit ? limit : undefined, // si es 0 devuelve todo
       orderBy: {
-        name: 'asc'
+        [columnOrderBy]: orderBy
       },
       where: {
         // Filtro opcional basado en el campo "search" si esque existe
@@ -145,7 +151,7 @@ export class ProductsService {
           ? [
             { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
             { description: { contains: search, mode: 'insensitive' } },
-            ...(isValidProductType(search) ? [{ type: { equals: search as ProductType } }] : []),
+            ...(isValidProductType(search) ? [{ types: { some: { type: { equals: search as ProductType } } } }] : []),
           ]
           : undefined,
         // Filtro para el campo status (si está presente en el DTO)
@@ -163,6 +169,7 @@ export class ProductsService {
         unit: true,
         categories: true,
         branchProductInventory: true,
+        types: true,
       }
     });
 
@@ -173,7 +180,7 @@ export class ProductsService {
           ? [
             { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
             { description: { contains: search, mode: 'insensitive' } },
-            ...(isValidProductType(search) ? [{ type: { equals: search as ProductType } }] : []),
+            ...(isValidProductType(search) ? [{ types: { some: { type: { equals: search as ProductType } } } }] : []),
           ]
           : undefined,
         // Filtro para el campo status (si está presente en el DTO)
@@ -194,7 +201,7 @@ export class ProductsService {
       meta: {
         totalItems, // Total de productos encontrados
         itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
-        totalPages: limit? Math.ceil(totalItems / limit) : 1, // Total de páginas
+        totalPages: limit ? Math.ceil(totalItems / limit) : 1, // Total de páginas
         currentPage: page, // Página actual
       }
     };
@@ -212,6 +219,7 @@ export class ProductsService {
         unit: true,
         categories: true,
         branchProductInventory: true,
+        types: true,
       }
     });
 
@@ -263,6 +271,7 @@ export class ProductsService {
         categories,
         branchProductInventory,
         unitId,
+        typesProduct,
         ...productData // El resto de las propiedades se asignan a productData
       } = updateProductDto;
 
@@ -331,6 +340,18 @@ export class ProductsService {
               }
             }
           }),
+          ...(typesProduct && {
+            types: {
+              deleteMany: {
+                productId: id, // Elimina inventarios anteriores relacionados al producto
+              },
+              createMany: {
+                data: typesProduct.map((type) => ({
+                  type
+                }))
+              }
+            }
+          }),
         },
         include: {
           unit: true,
@@ -367,6 +388,7 @@ export class ProductsService {
         unit: true,
         categories: true,
         branchProductInventory: true,
+        types: true,
       }
     });
 
@@ -380,7 +402,7 @@ export class ProductsService {
 
     // Verifica si el producto tiene relaciones que lo bloquean para ser eliminado
     if (
-      recordExists.branchProductInventory.length > 0 //|| // Tiene composiciones
+      recordExists.branchProductInventory.length > 0 || recordExists.types.length > 0 //|| // Tiene composiciones
       // (recordExists.orders && recordExists.orders.length > 0) // Relación con órdenes (si aplica)
     ) {
       throw new RpcException({

@@ -100,4 +100,9 @@ export class CreateProductDto {
     @ValidateNested({ each: true })
     @Type(() => BranchProductInventoryDto) // Asocia ProductBranchStockDto
     branchProductInventory?: BranchProductInventoryDto[]; // Agregado como un arreglo
+
+    @IsNotEmpty({ message: "El campo 'typesProduct' es obligatorio." })
+    @IsArray({ message: "El campo 'typesProduct' debe ser un array." })
+    @ValidateNested({ each: true })
+    typesProduct: "RawMaterial" | "FinalProduct" | "Ingredient" | "Recipe"[];
 }

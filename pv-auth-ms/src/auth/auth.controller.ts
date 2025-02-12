@@ -30,4 +30,9 @@ export class AuthController {
   findAll(@Payload() paginationDto: UsersPaginationDto){
     return this.authService.findAll(paginationDto);
   }
+
+  @MessagePattern('auth.user.findOne')
+  findOne(@Payload() id: string){
+    return this.authService.findOne(id);
+  }
 }

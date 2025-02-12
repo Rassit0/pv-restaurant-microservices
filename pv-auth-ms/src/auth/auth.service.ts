@@ -210,4 +210,44 @@ export class AuthService {
       })
     }
   }
+
+  
+  async findOne(id: string) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isEnable: true,
+          createdAt: true,
+          updatedAt: true,
+          roleId: true,
+          role: {
+            select: {
+              name: true,
+              description: true,
+            }
+          },
+          imageUrl: true,
+        }
+      });
+
+      if (!user) {
+        throw new RpcException({
+          message: 'No se encontró el usuario',
+          statusCode: HttpStatus.NOT_FOUND
+        })
+      }
+      return user;
+    } catch (error) {
+      if (error instanceof RpcException) throw error;
+      console.log(error);
+      throw new RpcException({
+        message: 'Ocurrió un error al buscar el usuario',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR
+      })
+    }
+  }
 }

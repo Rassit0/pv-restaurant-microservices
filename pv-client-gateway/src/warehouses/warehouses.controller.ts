@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, Query } from '@nestjs/common';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { NATS_SERVICE } from 'src/config';
@@ -22,8 +22,8 @@ export class WarehousesController {
   }
 
   @Get()
-  findAll() {
-    return this.natsClient.send("findAllWarehouses", {})
+  findAll(@Query() paginationDto: any) {
+    return this.natsClient.send("findAllWarehouses", paginationDto)
       .pipe(
         catchError(error => {
           console.log(error)

@@ -7,6 +7,7 @@ import { catchError, firstValueFrom } from 'rxjs';
 import { error } from 'console';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { slugify } from 'src/common/helpers/slugify';
+import { WarehousePaginationDto } from './dto/warehouse-pagination';
 
 @Injectable()
 export class WarehousesService {
@@ -114,9 +115,27 @@ export class WarehousesService {
     }
   }
 
-  async findAll() {
+  async findAll(paginationDto: WarehousePaginationDto) {
+
+    const { limit, page, search, status } = paginationDto;
+    // Calcular el offset para la paginación
+    const skip = limit ? (page - 1) * limit : undefined;
     try {
       const warehouses = await this.prisma.warehouse.findMany({
+        skip, // Desplazamiento para la paginación
+        take: limit ? limit : undefined, // si es 0 devuelve todo
+        where: {
+          OR: search
+            ? [
+              { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
+            ]
+            : undefined,
+          // Filtro para el campo status (si está presente en el DTO)
+          ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
+        },
+        orderBy: {
+          name: 'asc'
+        },
         include: {
           branches: {
             select: {
@@ -130,9 +149,6 @@ export class WarehousesService {
             }
           },
         },
-        orderBy: {
-          name: 'asc'
-        }
       });
 
       const branchIds = [
@@ -151,9 +167,28 @@ export class WarehousesService {
         }))
       }));
 
+      // Contar el total de productos que cumplen el filtro (sin paginación)
+      const totalItems = await this.prisma.warehouse.count({
+        where: {
+          OR: search
+            ? [
+              { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
+            ]
+            : undefined,
+          // Filtro para el campo status (si está presente en el DTO)
+          ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
+        },
+      });
+
       return {
-        warehouses: warehousesAndBranches
-      }
+        warehouses: warehousesAndBranches,
+        meta: {
+          totalItems, // Total de productos encontrados
+          itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
+          totalPages: limit ? Math.ceil(totalItems / limit) : 1, // Total de páginas
+          currentPage: page, // Página actual
+        }
+      };
     } catch (error) {
       console.log('Error al obtener la lista de almacenes:', error);
       throw new RpcException({

@@ -5,6 +5,7 @@ import { CategoryDto } from "./category.dto";
 import { Type } from "class-transformer";
 import { ComposedByProductsDto } from "./composed_by_products.dto";
 import { BranchProductInventoryDto } from "./branch-product-inventory.dto";
+import { TypesProductDto } from "./types-product.dto";
 
 export class CreateProductDto {
     @IsString({ message: "El nombre(name) del producto debe ser un texto válido." })
@@ -15,10 +16,6 @@ export class CreateProductDto {
     @IsString({ message: "La descripción(description) del producto debe ser un texto válido." })
     @IsNotEmpty({ message: 'La descripción del producto es obligatorio' })
     description: string;
-
-    @IsEnum(ProductType, { message: "El tipo(type) debe ser 'RawMaterial' o 'FinalProduct'." })
-    @IsNotEmpty({ message: 'El tipo del producto es obligatorio' })
-    type: ProductType;
 
     @IsDecimal(
         { force_decimal: true, decimal_digits: '2,', locale: 'en-US' },
@@ -76,4 +73,9 @@ export class CreateProductDto {
     @ValidateNested({ each: true })
     @Type(() => BranchProductInventoryDto) // Asocia ProductBranchStockDto
     branchProductInventory?: BranchProductInventoryDto[]; // Agregado como un arreglo
+
+    @IsNotEmpty({ message: "El campo 'typesProduct' no puede estar vacío." })
+    @IsArray({ message: "El campo 'typesProduct' debe ser un array de tipos de producto." })
+    @IsEnum(ProductType, { each: true, message: "Cada elemento de 'typesProduct' debe ser un tipo de producto válido: ${Object.values(ProductType).join(', ')}." })
+    typesProduct: ProductType[];
 }

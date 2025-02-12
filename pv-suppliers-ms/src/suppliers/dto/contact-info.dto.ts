@@ -26,6 +26,14 @@ export class ContactInfoDto {
     @IsString({ message: 'El nombre (contactName) de contacto es obligatorio.' })
     contactName: string;
 
+    @ValidateIf(o => !o.id)  // Solo valida si 'id' no está presente
+    @IsString({ message: 'El primer apellido (lastname) de contacto es obligatorio.' })
+    lastname: string;
+
+    @IsOptional()
+    @IsString({ message: 'El primer apellido (lastname) de contacto es obligatorio.' })
+    secondLastname: string;
+
     @IsOptional()
     @IsEmail({}, { message: 'Debe proporcionar un correo electrónico válido.' })
     @Exists({ model: 'contactInfo', property: 'email', excludeCurrentId: (o) => o.id }, { message: 'El email ya está registrado.' })
