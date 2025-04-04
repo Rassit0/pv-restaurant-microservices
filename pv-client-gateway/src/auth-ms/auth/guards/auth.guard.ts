@@ -28,9 +28,15 @@ export class AuthGuard implements CanActivate {
       const { user, token: validateToken } = await firstValueFrom(
         this.client.send(`auth.user.verify`, token)
       );
+      const role = await firstValueFrom(
+        this.client.send(`findOneRole`, user.roleId)
+      );
       // 💡 We're assigning the payload to the request object here
       // so that we can access it in our route handlers
-      request['user'] = user;
+      request['user'] = {
+        ...user,
+        role
+      };
       request['token'] = validateToken;
 
     } catch (error) {

@@ -1,12 +1,32 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsStrongPassword, IsUUID } from "class-validator";
+import {
+    IsEmail,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    IsStrongPassword,
+    IsUUID,
+    IsBoolean,
+    ValidateNested,
+    IsArray
+} from "class-validator";
+import { Type } from "class-transformer";
+
+export class UserBranchDto {
+    // @IsUUID()
+    // @IsNotEmpty({ message: 'El ID del usuario es requerido.' })
+    // userId: string;
+
+    @IsUUID()
+    @IsNotEmpty({ message: 'El ID de la sucursal es requerido.' })
+    branchId: string;
+}
 
 export class RegisterUserDto {
-
     @IsString()
-    @IsNotEmpty({message: 'El nombre de usuario es requerido.'})
+    @IsNotEmpty({ message: 'El nombre de usuario es requerido.' })
     name: string;
 
-    @IsEmail()
+    @IsEmail({}, { message: 'El correo electrónico no es válido.' })
     email: string;
 
     @IsString()
@@ -22,10 +42,24 @@ export class RegisterUserDto {
     password: string;
 
     @IsUUID()
-    @IsNotEmpty()
+    @IsNotEmpty({ message: 'El ID del rol es requerido.' })
     roleId: string;
 
     @IsOptional()
     @IsString()
     imageUrl?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    isEnable?: boolean;
+
+    @IsBoolean()
+    @IsOptional()
+    hasGlobalBranchesAccess?: boolean;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => UserBranchDto)
+    @IsOptional()
+    userBranches?: UserBranchDto[];
 }

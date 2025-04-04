@@ -52,28 +52,33 @@ export class CategoriesService {
   }
 
   async findAll(paginationDto: PaginationDto) {
-    // Obtiene todos los registros
-    const records = await this.prisma.category.findMany({
-      include: {
-        parents: {
-          select: {
-            parent: { select: { id: true, name: true } }
-          }
+    try {
+      // Obtiene todos los registros
+      const records = await this.prisma.category.findMany({
+        include: {
+          parents: {
+            select: {
+              parent: { select: { id: true, name: true } }
+            }
+          },
+          subcategories: {
+            select: {
+              category: { select: { id: true, name: true } }
+            }
+          },
+          products: true
         },
-        subcategories: {
-          select: {
-            category: { select: { id: true, name: true } }
-          }
-        },
-        products: true
-      },
-      orderBy: {
-        name: 'asc'
-      }
-    });
-    return {
-      categories: records // Devuelve los registros encontrados
-    };
+        orderBy: {
+          name: 'asc'
+        }
+      });
+      return {
+        categories: records // Devuelve los registros encontrados
+      };
+    } catch (error) {
+      if (error instanceof RpcException) throw error;
+      console.log(error)
+    }
   }
 
   async findOne(term: string) {

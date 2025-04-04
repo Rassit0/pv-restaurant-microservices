@@ -23,7 +23,7 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-  @MessagePattern('updateUser')
+  @MessagePattern('auth.update.user')
   update(@Payload() updateUserDto: UpdateUserDto) {
     return this.usersService.update(updateUserDto.id, updateUserDto);
   }

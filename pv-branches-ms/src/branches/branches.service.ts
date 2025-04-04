@@ -3,8 +3,9 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
-import { catchError, firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, of } from 'rxjs';
 import { NATS_SERVICE } from 'src/config';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 @Injectable()
 export class BranchesService {
@@ -59,13 +60,37 @@ export class BranchesService {
     }
   }
 
-  async findAll() {
+  async findAll(paginationDto: PaginationDto) {
+
+    const { limit, page, search } = paginationDto;
+    // Calcular el offset para la paginación
+    const skip = limit ? (page - 1) * limit : undefined;
     const branches = await this.prisma.branch.findMany({
+      skip, // Desplazamiento para la paginación
+      take: limit ? limit : undefined, // si es 0 devuelve todo
+      where: {
+        OR: search
+          ? [
+            { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
+            { location: { contains: search, mode: 'insensitive' } },
+          ]
+          : undefined,
+      },
       orderBy: {
         name: 'asc'
       }
     });
 
+    const totalItems = await this.prisma.branch.count({
+      where: {
+        OR: search
+          ? [
+            { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
+            { location: { contains: search, mode: 'insensitive' } },
+          ]
+          : undefined,
+      }
+    });
     // Obtener almacenes para cada sucursal
     const branchesWithWarehouses = await Promise.all(
       branches.map(async (branch) => {
@@ -73,22 +98,9 @@ export class BranchesService {
         // Enviar solicitud al servicio de sucursales para validar los branchIds
         const manager = await firstValueFrom(
           this.natsClient.send('auth.user.findOne', branch.managerId).pipe(
-            catchError(error => {
-              console.error('Error capturado al enviar mensaje:', error);
-
-              // Si el error tiene message y statusCode, convertirlo en un RpcException
-              if (error?.message && error?.statusCode) {
-                throw new RpcException({
-                  message: error.message,
-                  statusCode: error.statusCode,
-                });
-              }
-
-              // Si no tiene estas propiedades, lanzar un RpcException genérico
-              throw new RpcException({
-                message: 'Error desconocido al comunicarse con el servicio de sucursales.',
-                statusCode: 500, // Internal Server Error
-              });
+            catchError((error) => {
+              // console.error('Error fetching findOne:', error);
+              return of(null);
             })
           )
         );
@@ -98,7 +110,13 @@ export class BranchesService {
 
     return {
       branches: branchesWithWarehouses,
-    }
+      meta: {
+        totalItems, // Total de productos encontrados
+        itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
+        totalPages: limit ? Math.ceil(totalItems / limit) : 1, // Total de páginas
+        currentPage: page, // Página actual
+      }
+    };
   }
 
   async findOne(id: string) {

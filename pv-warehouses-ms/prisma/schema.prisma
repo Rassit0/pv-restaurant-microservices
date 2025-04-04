@@ -32,21 +32,21 @@ model Warehouse {
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
   deletedAt   DateTime?         @map("deleted_at")
-  usersAccess WarehouseAccess[]
+  // usersAccess WarehouseAccess[]
   branches    WarehouseBranch[]
 
   @@map("warehouses")
 }
 
-model WarehouseAccess {
-  id          Int           @id @default(autoincrement())
-  warehouseId String
-  userId      String
-  role        WarehouseRole @default(OPERATOR)
-  warehouse   Warehouse     @relation(fields: [warehouseId], references: [id])
+// model WarehouseAccess {
+//   id          Int           @id @default(autoincrement())
+//   warehouseId String
+//   userId      String
+//   role        WarehouseRole @default(OPERATOR)
+//   warehouse   Warehouse     @relation(fields: [warehouseId], references: [id])
 
-  @@unique([warehouseId, userId])
-}
+//   @@unique([warehouseId, userId])
+// }
 
 model WarehouseBranch {
   warehouseId String

@@ -34,8 +34,18 @@ export class WarehousesController {
     return this.warehousesService.remove(id);
   }
 
+  @MessagePattern('warehouses.validateIds')
+  validateBranchesIds(@Payload() ids: string[]) {
+    return this.warehousesService.validateWarehousesIds(ids);
+  }
+
   @MessagePattern('get_warehouses_by_branch_id')
   getWarehousesByBranchId(@Payload() branchId: string) {
     return this.warehousesService.getWarehousesByBranchId(branchId);
+  }
+
+  @MessagePattern('get_warehouses_by_ids')
+  getBranchesByIds(@Payload() ids: string[]) {
+    return this.warehousesService.getWarehousesByIds(ids);
   }
 }

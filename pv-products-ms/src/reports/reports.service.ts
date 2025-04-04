@@ -194,30 +194,30 @@ export class ReportsService {
     //   },
     // });
 
-    const productsInTransit = await this.prisma.branchProductInventory.findMany({
-      where: {
-        warehouseId: {
-          contains: 'transit',
-        },
-      },
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
-    })
+    // const productsInTransit = await this.prisma.branchProductStock.findMany({
+    //   where: {
+    //     warehouseId: {
+    //       contains: 'transit',
+    //     },
+    //   },
+    //   include: {
+    //     product: {
+    //       select: {
+    //         id: true,
+    //         name: true
+    //       }
+    //     }
+    //   }
+    // })
 
-    return {
-      reportName: 'Productos en tránsito',
-      productsInTransit: productsInTransit.map((product) => ({
-        id: product.product.id,
-        name: product.product.name,
-        stock: product.stock,
-        stockLocation: product.warehouseId,
-      })),
-    };
+    // return {
+    //   reportName: 'Productos en tránsito',
+    //   productsInTransit: productsInTransit.map((product) => ({
+    //     id: product.product.id,
+    //     name: product.product.name,
+    //     stock: product.stock,
+    //     stockLocation: product.warehouseId,
+    //   })),
+    // };
   }
 }

@@ -3,7 +3,7 @@ import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { NATS_SERVICE } from 'src/config';
-import { catchError, firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, of } from 'rxjs';
 import { error } from 'console';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { slugify } from 'src/common/helpers/slugify';
@@ -19,7 +19,7 @@ export class WarehousesService {
 
   async create(createWarehouseDto: CreateWarehouseDto) {
     try {
-      const { branches, usersAccess, ...data } = createWarehouseDto;
+      const { branches, ...data } = createWarehouseDto;
 
       // Verificar si el nombre ya existe
       const existingWarehouse = await this.prisma.warehouse.findUnique({
@@ -74,12 +74,6 @@ export class WarehousesService {
         data: {
           ...data,
           slug: slugify(data.name),
-          usersAccess: {
-            create: usersAccess.map(user => ({
-              userId: user.userId,
-              role: user.role,
-            }))
-          },
           branches: {
             create: branches.map(item => ({
               branchId: item.branchId,
@@ -90,12 +84,6 @@ export class WarehousesService {
           branches: {
             select: {
               branchId: true,
-            }
-          },
-          usersAccess: {
-            select: {
-              userId: true,
-              role: true,
             }
           },
         },
@@ -140,12 +128,6 @@ export class WarehousesService {
           branches: {
             select: {
               branchId: true,
-            }
-          },
-          usersAccess: {
-            select: {
-              userId: true,
-              role: true,
             }
           },
         },
@@ -213,12 +195,6 @@ export class WarehousesService {
               branchId: true,
             }
           },
-          usersAccess: {
-            select: {
-              userId: true,
-              role: true,
-            }
-          },
         },
       });
 
@@ -255,7 +231,7 @@ export class WarehousesService {
 
   async update(id: string, updateWarehouseDto: UpdateWarehouseDto) {
     try {
-      const { branches, usersAccess, ...data } = updateWarehouseDto;
+      const { branches, ...data } = updateWarehouseDto;
 
       const warehouseExists = await this.prisma.warehouse.findUnique({
         where: { id }
@@ -329,17 +305,6 @@ export class WarehousesService {
           ...(data.name && {
             slug: slugify(data.name)
           }),
-          ...(usersAccess && {
-            usersAccess: {
-              deleteMany: {
-                warehouseId: id,
-              },
-              create: usersAccess.map(user => ({
-                userId: user.userId,
-                role: user.role,
-              }))
-            },
-          }),
           ...(branches && {
             branches: {
               deleteMany: {
@@ -355,12 +320,6 @@ export class WarehousesService {
           branches: {
             select: {
               branchId: true,
-            }
-          },
-          usersAccess: {
-            select: {
-              userId: true,
-              role: true,
             }
           },
         },
@@ -390,12 +349,6 @@ export class WarehousesService {
               branchId: true,
             }
           },
-          usersAccess: {
-            select: {
-              userId: true,
-              role: true,
-            }
-          },
         },
       });
 
@@ -405,17 +358,52 @@ export class WarehousesService {
           statusCode: HttpStatus.NOT_FOUND
         });
       }
+
+      // Verificación del stock en el almacen
+      // const infoStockWarehouseExists = await firstValueFrom(
+      //   this.natsClient.send(
+      //     'products.stockWarehouseExists', id
+      //   ).pipe(
+      //     catchError((error) => {
+      //       console.error('Error fetching branch:', error);
+      //       return of(null);
+      //     })
+      //   )
+      // );
+
+      // Enviar solicitud al servicio de sucursales para validar los branchIds
+      const filteredProductsByWarehouseId = await firstValueFrom(
+        this.natsClient.send('findAllProducts', { warehouseId: id }).pipe(
+          catchError(error => {
+            console.error('Error capturado al enviar mensaje:', error);
+
+            // Si el error tiene message y statusCode, convertirlo en un RpcException
+            if (error?.message && error?.statusCode) {
+              throw new RpcException({
+                message: error.message,
+                statusCode: error.statusCode,
+              });
+            }
+
+            // Si no tiene estas propiedades, lanzar un RpcException genérico
+            throw new RpcException({
+              message: 'Error desconocido al comunicarse con el servicio de sucursales.',
+              statusCode: 500, // Internal Server Error
+            });
+          })
+        )
+      );
+
+      if (filteredProductsByWarehouseId.products.length > 0) {
+        throw new RpcException({
+          message: 'No se puede eliminar el almacén porque tiene información relacionada.',
+          statusCode: HttpStatus.CONFLICT,
+        });
+      }
       // // Verificar si el almacén tiene relaciones activas
       // if (warehouseExists.branches.length > 0) {
       //   throw new RpcException({
-      //     message: 'No se puede eliminar el almacén porque está relacionado con sucursales.',
-      //     statusCode: HttpStatus.CONFLICT,
-      //   });
-      // }
-
-      // if (warehouseExists.usersAccess.length > 0) {
-      //   throw new RpcException({
-      //     message: 'No se puede eliminar el almacén porque está relacionado con usuarios.',
+      //     message: 'No se puede eliminar el almacén porque tiene información relacionada.',
       //     statusCode: HttpStatus.CONFLICT,
       //   });
       // }
@@ -425,15 +413,14 @@ export class WarehousesService {
         where: { warehouseId: id, },
       });
 
-      // Elimina las relaciones con los usuarios
-      await this.prisma.warehouseAccess.deleteMany({
-        where: { warehouseId: id },
+      const warehouse = await this.prisma.warehouse.delete({
+        where: { id }
       });
 
       // Eliminar el almacen ya sin relaciones
       return {
         message: 'Almacén eliminado con éxito.',
-        warehouse: warehouseExists,
+        warehouse,
       }
     } catch (error) {
       if (error instanceof RpcException) throw error;
@@ -443,6 +430,33 @@ export class WarehousesService {
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       })
     }
+  }
+
+  async validateWarehousesIds(ids: string[]) {
+    // Eliminar duplicados
+    ids = Array.from(new Set(ids));
+
+    // Validar sucursales existentes
+    const warehouses = await this.prisma.warehouse.findMany({
+      where: {
+        id: {
+          in: ids
+        },
+      },
+    });
+
+    // Verificar que se encontraron todas
+    if (warehouses.length !== ids.length) {
+      const foundIds = warehouses.map(warehouse => warehouse.id);
+      const missingIds = ids.filter(id => !foundIds.includes(id));
+
+      throw new RpcException({
+        message: `No se encontraron las siguientes almacenes: ${missingIds.join(', ')}`,
+        statusCode: HttpStatus.BAD_REQUEST,
+      })
+    }
+
+    return warehouses;
   }
 
   async getWarehousesByBranchId(branchId: string) {
@@ -456,6 +470,24 @@ export class WarehousesService {
             }
           }
         }
+      });
+
+      return warehouses;
+    } catch (error) {
+      console.log('Error al obtener las sucursales', error);
+      return [];
+    }
+  }
+
+  async getWarehousesByIds(ids: string[]) {
+    try {
+      if (!ids || ids.length === 0) {
+        return [];
+      }
+
+      // Consultar las sucursales en la db
+      const warehouses = await this.prisma.warehouse.findMany({
+        where: { id: { in: ids } },
       });
 
       return warehouses;

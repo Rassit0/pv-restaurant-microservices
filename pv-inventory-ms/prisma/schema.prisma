@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Tipos de movimiento de inventario
+enum InventoryMovementType {
+  INCOME // Entrada de inventario (compra, devolución)
+  OUTCOME // Salida de inventario (venta, desperdicio)
+  ADJUSTMENT // Ajuste manual de stock
+  TRANSFER // Transferencia entre almacenes/sucursales
+}
+
+enum AdjustmentType {
+  INCOME // Ajuste de entrada (agregar stock)
+  OUTCOME // Ajuste de salida (reducir stock)
+}
+
+enum StatusInventoryMovement {
+  PENDING // Estado inicial: Solicitud pendiente de confirmación
+  ACCEPTED // Estado: Confirmado por el encargado de almacén
+  CANCELED // Estado: Transacción cancelada
+  COMPLETED // Opcional: Estado final después de procesar el movimiento
+}
+
+/// Modelo de Movimientos de Inventario
+model InventoryMovement {
+  id             String                     @id @default(uuid()) // ID único del movimiento
+  movementType   InventoryMovementType      @map("movement_type") // Tipo de movimiento
+  adjustmentType AdjustmentType?            @map("adjustment_type") // Tipo de ajuste (solo si es AJUSTE)
+  status         StatusInventoryMovement @default(PENDING) @map("status") // Estado del movimiento
+  description    String?                    @map("description") // Solo obligatorio para ajustes
+
+  createdByUserId String    @map("created_by_user_id") // Usuario que realizó el movimiento
+  updatedByUserId String?   @map("updated_by_user_id") // Usuario que realizó el movimiento
+  createdAt       DateTime  @default(now()) @map("created_at") // Fecha de creación
+  entryDate       DateTime? @map("entry_date") // Fecha de creación
+  updatedAt       DateTime  @updatedAt @map("updated_at") // Última actualización
+
+  // Relación con los productos afectados por el movimiento
+  inventoryTransactionProducts InventoryMovementProduct[]
+
+  @@index([movementType]) // Índice para optimizar búsquedas por sucursal o almacén
+  @@map("inventory_movements")
+}
+
+/// Modelo de Stock en Sucursales
+model BranchStock {
+  id                          String                        @id @default(uuid())
+  originBranchId              String?                       @map("origin_branch_id") // ID de la sucursal
+  originWarehouseId           String?                       @map("origin_warehouse_id") // ID del almacén
+  branchId                    String?                       @map("branch_id") // ID de la sucursal
+  quantity                    Decimal                       @db.Decimal(10, 2) // Cantidad del producto en stock
+  updatedAt                   DateTime                      @updatedAt @map("updated_at")
+  inventoryMovementProduct InventoryMovementProduct[]
+
+  @@map("branch_stocks")
+}
+
+/// Modelo de Stock en Almacenes
+model WarehouseStock {
+  id                          String                        @id @default(uuid())
+  originWarehouseId           String?                       @map("origin_warehouse_id") // ID del almacén
+  originBranchId              String?                       @map("origin_branch_id") // ID de la sucursal
+  warehouseId                 String?                       @map("warehouse_id") // ID del almacén
+  quantity                    Decimal                       @db.Decimal(10, 2) // Cantidad del producto en stock
+  updatedAt                   DateTime                      @updatedAt @map("updated_at")
+  inventoryMovementProduct InventoryMovementProduct[]
+
+  @@map("warehouse_stocks")
+}
+
+/// Relación entre Transacciones de Inventario y Productos
+model InventoryMovementProduct {
+  id                     String  @id @default(uuid())
+  inventoryMovementId String  @map("inventory_movement_id") // ID del movimiento
+  productId              String  @map("product_id") // ID del producto
+  unit                   String  @db.VarChar(20) // Unidad de medida
+  branchStockId          String? @map("branch_stock_id") // Relación con BranchStock (si aplica)
+  warehouseStockId       String? @map("warehouse_stock_id") // Relación con WarehouseStock (si aplica)
+
+  // Relación con InventoryTransaction
+  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
+
+  // Relación con BranchStock
+  branchStock BranchStock? @relation(fields: [branchStockId], references: [id])
+
+  // Relación con WarehouseStock
+  warehouseStock WarehouseStock? @relation(fields: [warehouseStockId], references: [id])
+
+  @@index([inventoryMovementId, productId]) // Optimiza búsquedas por transacción de inventario y producto
+  @@map("inventory_movement_products")
+}

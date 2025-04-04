@@ -14,8 +14,9 @@ datasource db {
 }
 
 enum ProductType {
-  RawMaterial // Insumo o materia prima
+  RawMaterial // Materia prima
   FinalProduct // Producto final
+  Supply // Insumo
   Ingredient
   Recipe // Receta que combina productos
 }
@@ -24,28 +25,28 @@ model Unit {
   id           String   @id @default(uuid()) // El identificador único de la unidad
   name         String   @unique @db.VarChar(100) // Nombre completo de la unidad (Ej. "Kilogramo", "Litro")
   abbreviation String   @unique @db.VarChar(10) // Abreviatura de la unidad (Ej. "kg", "L")
-  createdAt    DateTime @default(now()) // Fecha de creación
-  updatedAt    DateTime @updatedAt // Fecha de última actualización
+  createdAt    DateTime @default(now()) @map("created_at") // Fecha de creación
+  updatedAt    DateTime @updatedAt @map("updated_at") // Fecha de última actualización
 
   // Relación con los productos
-  products       Product[]       @relation()
-  recipeProducts RecipeProduct[] // Relación inversa con 'RecipeProduct'
+  products Product[] @relation()
 
   @@map("units") // Mapea este modelo a la tabla 'units' en la base de datos
 }
 
 model Product {
-  id             String    @id @default(uuid()) // El identificador único del producto, generado como UUID
-  name           String    @unique @db.VarChar(100) // Nombre del producto, único en la base de datos
-  description    String // Descripción del producto
-  slug           String    @unique
-  price          Decimal   @db.Decimal(10, 2) // Precio del producto, con precisión de 10 dígitos y 2 decimales
+  id           String    @id @default(uuid()) // El identificador único del producto, generado como UUID
+  name         String    @unique @db.VarChar(100) // Nombre del producto, único en la base de datos
+  description  String? // Descripción del producto
+  slug         String    @unique
+  // price          Decimal   @db.Decimal(10, 2) // Precio del producto, con precisión de 10 dígitos y 2 decimales
   // stock          Decimal     @db.Decimal(10, 2) // Cantidad total en stock del producto
-  imageUrl       String?   @map("image_url") // URL de la imagen del producto
-  lastSaleDate   DateTime? @map("last_sale_date") // Fecha de la última venta del producto, puede ser nula si no se ha vendido
-  launchDate     DateTime? @map("launch_date") // Fecha de lanzamiento del producto, puede ser nula si no tiene una fecha de lanzamiento
-  expirationDate DateTime? @map("expiration_date") // Fecha de expiración del producto, puede ser nula si no aplica
-  isEnable       Boolean   @default(true) @map("is_enable") // Indica si el producto está habilitado o no
+  imageUrl     String?   @map("image_url") // URL de la imagen del producto
+  isEnable     Boolean   @default(true) @map("is_enable") // Indica si el producto está habilitado o no
+
+  // Campos relacionados con inventario y logística
+  minimumStock Decimal @map("minimun_stock") @db.Decimal(10, 2) // Stock mínimo recomendado antes de realizar un nuevo pedido o preparación
+  reorderPoint Decimal @map("reorder_point") @db.Decimal(10, 2) // Nivel de stock que activa una alerta para reabastecimiento
 
   unitId String @map("unit_id") // ID de la unidad de medida (relacionado con la tabla 'Units')
   unit   Unit   @relation(fields: [unitId], references: [id])
@@ -54,23 +55,33 @@ model Product {
   categories Category[] @relation("product_categories")
 
   // Campos adicional relacionado con el costo
-  purchasePrice Decimal @map("purchase_price") @db.Decimal(10, 2) // Precio de compra del producto
+  // purchasePrice Decimal @map("purchase_price") @db.Decimal(10, 2) // Precio de compra del producto
 
-  // Relación con la temporada (si el producto pertenece a una temporada)
-  seasonId String? @map("season_id") // Referencia a la temporada
-  season   Season? @relation("product_seasons", fields: [seasonId], references: [id])
+  branchProductStock    BranchProductStock[] // relacion con los stocks por sucursal
+  warehouseProductStock WarehouseProductStock[] // relacion con los stocks por almacén
 
-  branchProductInventory BranchProductInventory[] // relacion con los stocks por sucursal
+  createdAt       DateTime  @default(now()) @map("created_at") // Fecha de creación del producto, asignada automáticamente con la fecha actual
+  updatedAt       DateTime  @updatedAt @map("updated_at") // Fecha de la última actualización del producto, asignada automáticamente en cada cambio
+  deletedAt       DateTime? @map("deleted_at")
+  createdByUserId String    @map("created_by_user_id") // ID del usuario que crea la receta
+  updatedByUserId String?   @map("updated_by_user_id") // ID del usuario que actualiza la receta
+  deletedByUserId String?   @map("deleted_by_user_id")
 
-  // Relación de muchos a muchos con recetas (ya sea como insumo o producto final)
-  recipeProducts RecipeProduct[]
-
-  createdAt DateTime @default(now()) @map("created_at") // Fecha de creación del producto, asignada automáticamente con la fecha actual
-  updatedAt DateTime @updatedAt @map("updated_at") // Fecha de la última actualización del producto, asignada automáticamente en cada cambio
-
-  types TypeProduct[] // Relación con TypeProduct
+  types            TypeProduct[] // Relación con TypeProduct
+  suppliersProduct SupplierProduct[]
 
   @@map("products") // Mapea este modelo a la tabla 'products' en la base de datos
+}
+
+model SupplierProduct {
+  id          String @id @default(uuid()) // Clave primaria única
+  supplierId String @map("supplier_id") // ID del almacén (viene de otro microservicio)
+  productId   String @map("product_id") // ID del producto
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([supplierId, productId]) // Un almacén solo puede tener un producto único en la relación
+  @@map("supplier_products") // Nombre de la tabla en la base de datos
 }
 
 model TypeProduct {
@@ -82,22 +93,6 @@ model TypeProduct {
 
   @@unique([productId, type]) // Evita que se repitan combinaciones producto-tipo
   @@map("type_products") // Mapea a la tabla en la DB
-}
-
-model Season {
-  id          String   @id @default(uuid()) // Identificador único de la temporada
-  name        String   @unique @db.VarChar(100) // Nombre de la temporada (Ej. "Verano 2024")
-  startDate   DateTime // Fecha de inicio de la temporada
-  endDate     DateTime // Fecha de finalización de la temporada
-  description String?  @db.Text // Descripción de la temporada (opcional)
-
-  // Relación con la tabla de productos (muchos productos pueden estar en una temporada)
-  products Product[] @relation("product_seasons")
-
-  createdAt DateTime @default(now()) // Fecha de creación
-  updatedAt DateTime @updatedAt // Fecha de última actualización
-
-  @@map("seasons")
 }
 
 model Category {
@@ -119,8 +114,8 @@ model Category {
 
 model CategoryHierarchy {
   id         String @id @default(uuid()) // Clave primaria generada por UUID
-  categoryId String // Clave foránea hacia Category
-  parentId   String // Clave foránea hacia Category (padre)
+  categoryId String @map("category_id")// Clave foránea hacia Category
+  parentId   String @map("parent_id")// Clave foránea hacia Category (padre)
 
   category Category @relation("CategoryToParents", fields: [categoryId], references: [id]) // Relación con la categoría hija
   parent   Category @relation("CategoryToSubcategories", fields: [parentId], references: [id]) // Relación con la categoría padre
@@ -128,56 +123,28 @@ model CategoryHierarchy {
   @@map("category_hierarchy")
 }
 
-model BranchProductInventory {
+model BranchProductStock {
   id        String   @id @default(uuid())
   productId String   @map("product_id")
   branchId  String   @map("branch_id")
-  stock     Decimal  @db.Decimal(10, 2)
+  stock     Decimal  @db.Decimal(10, 2) // Cantidad de stock disponible
   updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Campos relacionados con inventario y logística
-  minimumStock    Decimal  @map("minimun_stock") @db.Decimal(10, 2) // Stock mínimo recomendado antes de realizar un nuevo pedido o preparación
-  reorderPoint    Decimal  @map("reorder_point") @db.Decimal(10, 2) // Nivel de stock que activa una alerta para reabastecimiento
-  warehouseId     String?  @map("warehouse_id") // Ubicación física dentro del almacén (zona fría, estantería, congelador, etc.)
-  // ultima actualizacion de stock
-  lastStockUpdate DateTime @default(now()) @map("last_stock_update")
-
-  // precio de compra si una sucursal es en otra ciudad
-  purchasePriceOverride Decimal? @db.Decimal(10, 2) // Precio de compra específico para esta sucursal
-  // Precio de venta por sucursal opcional
-  priceOverride         Decimal? @db.Decimal(10, 2) // Precio de compra específico para esta sucursal
 
   product Product @relation(fields: [productId], references: [id])
 
   @@unique([productId, branchId]) // Un producto solo puede tener un stock único por sucursal
-  @@map("branch_product_inventory")
+  @@map("branch_product_stock")
 }
 
-model Recipe {
-  id          String   @id @default(uuid()) // ID único de la receta
-  name        String   @unique @db.VarChar(100) // Nombre único de la receta
-  description String? // Descripción opcional de la receta
-  isEnable    Boolean  @default(true) @map("is_enable") // Indica si la receta está activa
-  createdAt   DateTime @default(now()) @map("created_at") // Fecha de creación
-  updatedAt   DateTime @updatedAt @map("updated_at") // Fecha de actualización
+model WarehouseProductStock {
+  id          String   @id @default(uuid())
+  productId   String   @map("product_id")
+  warehouseId String   @map("warehouse_id")
+  stock       Decimal  @db.Decimal(10, 2) // Cantidad de stock disponible
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  // Relación con los productos (insumos y productos finales)
-  recipeProducts RecipeProduct[]
-
-  @@map("recipes")
-}
-
-model RecipeProduct {
-  id        String  @id @default(uuid()) // ID único de la relación
-  recipeId  String  @map("recipe_id") // ID de la receta
-  productId String  @map("product_id") // ID del producto (insumo o producto final)
-  quantity  Decimal @db.Decimal(10, 2) // Cantidad utilizada del producto en la receta
-  unitId    String  @map("unit_id") // ID de la unidad de medida
-  unit      Unit    @relation(fields: [unitId], references: [id])
-
-  recipe  Recipe  @relation(fields: [recipeId], references: [id])
   product Product @relation(fields: [productId], references: [id])
 
-  @@unique([recipeId, productId]) // Evita duplicados
-  @@map("recipe_products")
+  @@unique([productId, warehouseId]) // Un producto solo puede tener un stock único por sucursal
+  @@map("warehouse_product_stock")
 }

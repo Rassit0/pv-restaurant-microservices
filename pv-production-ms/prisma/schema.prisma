@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Recipe {
+  id                      String                  @id @default(uuid())
+  name                    String                  @unique
+  slug                    String                  @unique
+  description             String?
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+  deletedAt               DateTime?               @map("deleted_at")
+  updatedByUserId         String                  @map("updated_by_user_id") // ID del usuario que actualiza la receta
+  createdByUserId         String                  @map("created_by_user_id") // ID del usuario que crea la receta
+  deletedByUserId         String?                 @map("deleted_by_user_id")
+  items                   RecipeItem[]
+  preparationInstructions String?                 @map("preparation_instructions") // Instrucciones de preparación
+  imageUrl                String?                 @map("image_url") // URL de la imagen del producto
+  isEnable                Boolean                 @default(true)
+  preparationTime         Int                     @default(0) @map("preparation_time") // Tiempo en minutos
+  ProductionDetail        ProductionOrderDetail[]
+
+  @@map("recipes")
+}
+
+model RecipeItem {
+  id        String  @id @default(uuid())
+  productId String  @map("product_id") // Relación con el microservicio de Products
+  quantity  Decimal @db.Decimal(10, 2) // Cantidad necesaria por unidad de producción
+  recipeId  String? @map("recipe_id")
+  recipe    Recipe? @relation(fields: [recipeId], references: [id])
+
+  @@map("recipe_item")
+}
+
+model ProductionOrders {
+  id              String                @id @default(uuid())
+  branchId        String?               @map("branch_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  status          ProductionOrderStatus @default(PENDING)
+  createdByUserId String                @map("created_by_user_id") // ID del usuario que crea la producción
+  updatedByUserId String                @map("updated_by_user_id") // ID del usuario que actualiza la producción
+  deletedAt       DateTime?             @map("deleted_at") // Campo de eliminación lógica
+  deletedByUserId String?               @map("deleted_by_user_id") // Usuario que eliminó la producción
+  deliveryDate    DateTime?             @map("delivery_date")
+
+  totalTime Int @map("total_time")
+
+  // Relación con ProductionOrderDetail
+  productionOrderDetails ProductionOrderDetail[]
+
+  @@map("production_orders")
+}
+
+model ProductionOrderDetail {
+  id                String  @id @default(uuid())
+  productionOrderId String  @map("production_order_id")
+  recipeId          String  @map("recipe_id")
+  quantity          Decimal @db.Decimal(10, 2) // Cantidad de esta receta a producir en esta producción
+  parallelGroupId   String? @map("parallel_group_id") // Relación con el grupo paralelo
+  isParallel        Boolean @default(false) @map("is_parallel") // Indica si es paralelo
+
+  // Relaciones
+  productionOrder ProductionOrders @relation(fields: [productionOrderId], references: [id])
+  recipe          Recipe           @relation(fields: [recipeId], references: [id])
+  parallelGroup     ParallelGroup?   @relation(fields: [parallelGroupId], references: [id])
+  
+  subTotalTime Int @map("sub_total_time")
+
+  @@map("production_details")
+}
+
+model ParallelGroup {
+  id          String              @id @default(uuid())
+  name        String              @unique // Nombre del grupo paralelo
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  // Relación con los detalles de producción
+  productionOrderDetails ProductionOrderDetail[]
+
+  @@map("parallel_groups")
+}
+
+
+enum ProductionOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}

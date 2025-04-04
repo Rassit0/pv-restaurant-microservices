@@ -1,6 +1,6 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { CreateProductDto } from './create-product.dto';
-import { IsNotEmpty, IsString, ValidateIf } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, ValidateIf } from 'class-validator';
 import { IsUnique } from 'src/common/validators';
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {
@@ -14,4 +14,5 @@ export class UpdateProductDto extends PartialType(CreateProductDto) {
     // @IsNotEmpty({ message: 'El nombre del producto es obligatorio' })
     @IsUnique('product', 'name', { message: "El nombre del producto debe ser único" }, 'id')
     name: string;
+
 }

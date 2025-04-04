@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { envs } from 'src/config';
+import { NatsModule } from 'src/transports/nats/nats.module';
 
 @Module({
   controllers: [AuthController],
@@ -16,7 +17,8 @@ import { envs } from 'src/config';
       signOptions:{
         expiresIn: '12h'
       }
-    })
+    }),
+    NatsModule,
   ]
 })
 export class AuthModule {}

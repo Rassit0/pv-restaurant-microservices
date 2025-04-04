@@ -9,7 +9,7 @@ import { contains, equals } from 'class-validator';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { ProductType } from '@prisma/client';
 import { ProductPaginationDto } from './dto/product-pagination.dto';
-import { catchError, firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, Observable } from 'rxjs';
 import { NATS_SERVICE } from 'src/config';
 
 @Injectable()
@@ -20,13 +20,40 @@ export class ProductsService {
     @Inject(NATS_SERVICE) private readonly natsClient: ClientProxy
   ) { }
 
+  async handleRpcError<T>(observable$: Observable<T>): Promise<T> {
+    return firstValueFrom(
+      observable$.pipe(
+        catchError(error => {
+          console.error('Error capturado en handleRpcError:', error);
+
+          // Si el error tiene message y statusCode, lanzar un RpcException con esos datos
+          if (error?.message && error?.statusCode) {
+            throw new RpcException({
+              message: error.message,
+              statusCode: error.statusCode,
+            });
+          }
+
+          // Si el error no tiene message ni statusCode, lanzar un error genérico
+          throw new RpcException({
+            message: 'Error desconocido al comunicarse con el microservicio.',
+            statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          });
+        })
+      )
+    );
+  }
+
   async create(createProductDto: CreateProductDto) {
     try {
       // Desestructuramos el DTO para extraer las propiedades de tipo array
       const {
         categories,
-        branchProductInventory,
+        branchProductStock,
+        warehouseProductStock,
+        suppliersProduct,
         typesProduct,
+        userId,
         ...productData // El resto de las propiedades se asignan a productData
       } = createProductDto;
 
@@ -43,9 +70,9 @@ export class ProductsService {
         });
       }
 
-      if (branchProductInventory) {
-        // Verificar si hay duplicados en branchProductInventory
-        const branchIds = branchProductInventory.map(inventory => inventory.branchId);
+      if (branchProductStock) {
+        // Verificar si hay duplicados en branchProductStock
+        const branchIds = branchProductStock.map(inventory => inventory.branchId);
 
         const uniqueBranchIds = new Set(branchIds); // Usamos un Set para filtrar duplicados
 
@@ -57,50 +84,56 @@ export class ProductsService {
         }
 
         // Enviar solicitud al servicio de sucursales para validar los branchIds
-        await firstValueFrom(
-          this.natsClient.send('branches.validateIds', branchIds).pipe(
-            catchError(error => {
-              console.error('Error capturado al enviar mensaje:', error);
+        //   await firstValueFrom(
+        //     this.natsClient.send('branches.validateIds', branchIds).pipe(
+        //       catchError(error => {
+        //         console.error('Error capturado al enviar mensaje:', error);
 
-              // Si el error tiene message y statusCode, convertirlo en un RpcException
-              if (error?.message && error?.statusCode) {
-                throw new RpcException({
-                  message: error.message,
-                  statusCode: error.statusCode,
-                });
-              }
+        //         // Si el error tiene message y statusCode, convertirlo en un RpcException
+        //         if (error?.message && error?.statusCode) {
+        //           throw new RpcException({
+        //             message: error.message,
+        //             statusCode: error.statusCode,
+        //           });
+        //         }
 
-              // Si no tiene estas propiedades, lanzar un RpcException genérico
-              throw new RpcException({
-                message: 'Error desconocido al comunicarse con el servicio de sucursales.',
-                statusCode: HttpStatus.INTERNAL_SERVER_ERROR, // Internal Server Error
-              });
-            })
-          )
-        );
+        //         // Si no tiene estas propiedades, lanzar un RpcException genérico
+        //         throw new RpcException({
+        //           message: 'Error desconocido al comunicarse con el servicio de sucursales.',
+        //           statusCode: HttpStatus.INTERNAL_SERVER_ERROR, // Internal Server Error
+        //         });
+        //       })
+        //     )
+        //   );
+        await this.handleRpcError(this.natsClient.send('branches.validateIds', branchIds));
       }
       // Crea un nuevo registro en la vase de datos con Prisma ORM
       const newRecord = await this.prisma.product.create({
         data: {
           ...productData,
           slug: slugify(productData.name),
+          createdByUserId: userId,
           // Relacionar categorías
           categories: {
             connect: categories.map(category => ({
               id: category.id
             }))
           },
-          // Crear inventario por sucursal (si existe)       
-          branchProductInventory: branchProductInventory
+          // Crear stock por sucursal (si existe)       
+          branchProductStock: branchProductStock
             ? {
-              create: branchProductInventory.map((inventory) => ({
-                branchId: inventory.branchId,
-                stock: inventory.stock,
-                minimumStock: inventory.minimumStock,
-                reorderPoint: inventory.reorderPoint,
-                warehouseId: inventory.warehouseId,
-                purchasePriceOverride: inventory.purchasePriceOverride
-              }))
+              create: branchProductStock
+            }
+            : undefined,
+          // Crear tock por almacén (si existe)       
+          warehouseProductStock: warehouseProductStock
+            ? {
+              create: warehouseProductStock
+            }
+            : undefined,
+          suppliersProduct: suppliersProduct
+            ? {
+              create: suppliersProduct
             }
             : undefined,
           types: {
@@ -120,91 +153,180 @@ export class ProductsService {
       }
     } catch (error) {
       if (error instanceof RpcException) throw error;
-      console.log(error)
+      console.log(error);
+      throw new RpcException({
+        message: 'Error al crear el producto.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
     }
   }
 
+
   async findAll(paginationDto: ProductPaginationDto) {
+    try {
+      // Método para obtener todos los productos con paginación y búsqueda opcional.
+      const { limit, page, search, status, branchId, warehouseId, orderBy, columnOrderBy, productIds } = paginationDto;
+      // 'limit': Número máximo de productos por página
+      // 'page' : Número de la página actual.
+      // 'search' : Texto opcional para filtrar los productos.
 
-    // Método para obtener todos los productos con paginación y búsqueda opcional.
-    const { limit, page, search, status, branchId, orderBy, columnOrderBy } = paginationDto;
-    // 'limit': Número máximo de productos por página
-    // 'page' : Número de la página actual.
-    // 'search' : Texto opcional para filtrar los productos.
+      // Calcular el offset para la paginación
+      const skip = limit ? (page - 1) * limit : undefined;
 
-    // Calcular el offset para la paginación
-    const skip = limit ? (page - 1) * limit : undefined;
+      const isValidProductType = (value: string): value is ProductType => {
+        return Object.values(ProductType).includes(value as ProductType);
+      };
 
-    const isValidProductType = (value: string): value is ProductType => {
-      return Object.values(ProductType).includes(value as ProductType);
-    };
-
-    const products = await this.prisma.product.findMany({
-      skip, // Desplazamiento para la paginación
-      take: limit ? limit : undefined, // si es 0 devuelve todo
-      orderBy: {
-        [columnOrderBy]: orderBy
-      },
-      where: {
-        // Filtro opcional basado en el campo "search" si esque existe
-        OR: search
-          ? [
-            { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
-            { description: { contains: search, mode: 'insensitive' } },
-            ...(isValidProductType(search) ? [{ types: { some: { type: { equals: search as ProductType } } } }] : []),
-          ]
-          : undefined,
-        // Filtro para el campo status (si está presente en el DTO)
-        ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
-        // Filtro basado en brnachId si está presente
-        ...(branchId && {
-          branchProductInventory: {
-            some: {
-              branchId
+      const products = await this.prisma.product.findMany({
+        skip, // Desplazamiento para la paginación
+        take: limit ? limit : undefined, // si es 0 devuelve todo
+        orderBy: {
+          [columnOrderBy]: orderBy
+        },
+        where: {
+          ...(productIds && productIds.length > 0 ? { id: { in: productIds } } : {}),
+          // Filtro opcional basado en el campo "search" si esque existe
+          OR: search
+            ? [
+              { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
+              { description: { contains: search, mode: 'insensitive' } },
+              ...(isValidProductType(search) ? [{ types: { some: { type: { equals: search as ProductType } } } }] : []),
+            ]
+            : undefined,
+          // Filtro para el campo status (si está presente en el DTO)
+          ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
+          // Filtro basado en branchId si está presente
+          ...(branchId && {
+            branchProductStock: {
+              some: {
+                branchId
+              }
             }
-          }
-        }),
-      },
-      include: {
-        unit: true,
-        categories: true,
-        branchProductInventory: true,
-        types: true,
-      }
-    });
-
-    // Contar el total de productos que cumplen el filtro (sin paginación)
-    const totalItems = await this.prisma.product.count({
-      where: {
-        OR: search
-          ? [
-            { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
-            { description: { contains: search, mode: 'insensitive' } },
-            ...(isValidProductType(search) ? [{ types: { some: { type: { equals: search as ProductType } } } }] : []),
-          ]
-          : undefined,
-        // Filtro para el campo status (si está presente en el DTO)
-        ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
-        // Filtro basado en brnachId si está presente
-        ...(branchId && {
-          branchProductInventory: {
-            some: {
-              branchId
+          }),
+          // Filtro basado en warehouseId si está presente
+          ...(warehouseId && {
+            warehouseProductStock: {
+              some: {
+                warehouseId
+              }
             }
-          }
-        }),
-      },
-    });
+          }),
+        },
+        include: {
+          unit: true,
+          categories: true,
+          branchProductStock: true,
+          warehouseProductStock: true,
+          suppliersProduct: {
+            select: {
+              supplierId: true,
+            }
+          },
+          types: true,
+        }
+      });
 
-    return {
-      products,
-      meta: {
-        totalItems, // Total de productos encontrados
-        itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
-        totalPages: limit ? Math.ceil(totalItems / limit) : 1, // Total de páginas
-        currentPage: page, // Página actual
-      }
-    };
+      // Contar el total de productos que cumplen el filtro (sin paginación)
+      const totalItems = await this.prisma.product.count({
+        where: {
+          ...(productIds && productIds.length > 0 ? { id: { in: productIds } } : {}),
+          OR: search
+            ? [
+              { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
+              { description: { contains: search, mode: 'insensitive' } },
+              ...(isValidProductType(search) ? [{ types: { some: { type: { equals: search as ProductType } } } }] : []),
+            ]
+            : undefined,
+          // Filtro para el campo status (si está presente en el DTO)
+          ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
+          // Filtro basado en brnachId si está presente
+          ...(branchId && {
+            branchProductStock: {
+              some: {
+                branchId
+              }
+            }
+          }),
+          // Filtro basado en warehouseId si está presente
+          ...(warehouseId && {
+            warehouseProductStock: {
+              some: {
+                warehouseId
+              }
+            }
+          }),
+        },
+      });
+
+      const productsAndBranchesAndWarehouses = await Promise.all(
+        products.map(async (product) => {
+          const branchProductStock = await Promise.all(
+            product.branchProductStock.map(async (bps) => {
+              try {
+                const branch = await firstValueFrom(
+                  this.natsClient.send('findOneBranch', bps.branchId)
+                );
+
+                return {
+                  ...bps,
+                  nameBranch: branch?.name || null, // Manejar el caso de que `branch` sea `null`
+                };
+              } catch (error) {
+                console.error('Error fetching branch:', error);
+                return {
+                  ...bps,
+                  nameBranch: null, // Valor por defecto en caso de error
+                };
+              }
+            })
+          );
+
+          const warehouseProductStock = await Promise.all(
+            product.warehouseProductStock.map(async (bps) => {
+              try {
+                const warehouse = await firstValueFrom(
+                  this.natsClient.send('findOneWarehouse', bps.warehouseId)
+                );
+
+                return {
+                  ...bps,
+                  nameWarehouse: warehouse?.name || null, // Manejar el caso de que `warehouse` sea `null`
+                };
+              } catch (error) {
+                console.error('Error fetching warehouse:', error);
+                return {
+                  ...bps,
+                  nameWarehouse: null, // Valor por defecto en caso de error
+                };
+              }
+            })
+          );
+
+          return {
+            ...product,
+            branchProductStock,
+            warehouseProductStock
+          };
+        })
+      );
+
+
+      return {
+        products: productsAndBranchesAndWarehouses,
+        meta: {
+          totalItems, // Total de productos encontrados
+          itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
+          totalPages: limit ? Math.ceil(totalItems / limit) : 1, // Total de páginas
+          currentPage: page, // Página actual
+        }
+      };
+    } catch (error) {
+      console.log('Error al obtener la lista de productos:', error);
+      throw new RpcException({
+        message: 'Error al obtener la lista de productos.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      })
+    }
   }
 
   async findOne(term: string) {
@@ -218,7 +340,13 @@ export class ProductsService {
       include: {
         unit: true,
         categories: true,
-        branchProductInventory: true,
+        branchProductStock: true,
+        warehouseProductStock: true,
+        suppliersProduct: {
+          select: {
+            supplierId: true,
+          }
+        },
         types: true,
       }
     });
@@ -231,8 +359,54 @@ export class ProductsService {
       })
     }
 
+    const branchProductStock = await Promise.all(
+      record.branchProductStock.map(async (bps) => {
+        try {
+          const branch = await firstValueFrom(
+            this.natsClient.send('findOneBranch', bps.branchId)
+          );
+
+          return {
+            ...bps,
+            nameBranch: branch?.name || null, // Manejar el caso de que `branch` sea `null`
+          };
+        } catch (error) {
+          console.error('Error fetching branch:', error);
+          return {
+            ...bps,
+            nameBranch: null, // Valor por defecto en caso de error
+          };
+        }
+      })
+    );
+
+    const warehouseProductStock = await Promise.all(
+      record.warehouseProductStock.map(async (bps) => {
+        try {
+          const warehouse = await firstValueFrom(
+            this.natsClient.send('findOneWarehouse', bps.warehouseId)
+          );
+
+          return {
+            ...bps,
+            nameWarehouse: warehouse?.name || null, // Manejar el caso de que `warehouse` sea `null`
+          };
+        } catch (error) {
+          console.error('Error fetching warehouse:', error);
+          return {
+            ...bps,
+            nameWarehouse: null, // Valor por defecto en caso de error
+          };
+        }
+      })
+    );
+
     // Devuelve el registro encontrado
-    return record;
+    return {
+      ...record,
+      branchProductStock,
+      warehouseProductStock
+    };
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
@@ -269,15 +443,18 @@ export class ProductsService {
       // Desestructuramos el DTO para extraer las propiedades de tipo array
       const {
         categories,
-        branchProductInventory,
+        branchProductStock,
+        warehouseProductStock,
+        suppliersProduct,
         unitId,
         typesProduct,
+        userId,
         ...productData // El resto de las propiedades se asignan a productData
       } = updateProductDto;
 
-      if (branchProductInventory) {
+      if (branchProductStock) {
         // Verificar si hay duplicados en branchProductInventory
-        const branchIds = branchProductInventory.map(inventory => inventory.branchId);
+        const branchIds = branchProductStock.map(inventory => inventory.branchId);
 
         const uniqueBranchIds = new Set(branchIds); // Usamos un Set para filtrar duplicados
 
@@ -289,27 +466,7 @@ export class ProductsService {
         }
 
         // Enviar solicitud al servicio de sucursales para validar los branchIds
-        await firstValueFrom(
-          this.natsClient.send('branches.validateIds', branchIds).pipe(
-            catchError(error => {
-              console.error('Error capturado al enviar mensaje:', error);
-
-              // Si el error tiene message y statusCode, convertirlo en un RpcException
-              if (error?.message && error?.statusCode) {
-                throw new RpcException({
-                  message: error.message,
-                  statusCode: error.statusCode,
-                });
-              }
-
-              // Si no tiene estas propiedades, lanzar un RpcException genérico
-              throw new RpcException({
-                message: 'Error desconocido al comunicarse con el servicio de sucursales.',
-                statusCode: 500, // Internal Server Error
-              });
-            })
-          )
-        );
+        await this.handleRpcError(this.natsClient.send('branches.validateIds', branchIds));
       }
 
       const updatedData = {
@@ -322,6 +479,7 @@ export class ProductsService {
         where: { id },
         data: {
           ...updatedData,
+          updatedByUserId: userId,
           ...(updateProductDto.name && { slug: slugify(updateProductDto.name) }), // Agrega 'slug' solo si 'name' tiene un valor.
           ...(updateProductDto.categories && {
             categories: {
@@ -330,13 +488,23 @@ export class ProductsService {
               }))
             }
           }),
-          ...(branchProductInventory && {
-            branchProductInventory: {
+          ...(branchProductStock && {
+            branchProductStock: {
               deleteMany: {
                 productId: id, // Elimina inventarios anteriores relacionados al producto
               },
               createMany: {
-                data: branchProductInventory.map((inventory) => (inventory))
+                data: branchProductStock
+              }
+            }
+          }),
+          ...(suppliersProduct && {
+            suppliersProduct: {
+              deleteMany: {
+                productId: id, // Elimina inventarios anteriores relacionados al producto
+              },
+              createMany: {
+                data: suppliersProduct
               }
             }
           }),
@@ -380,14 +548,15 @@ export class ProductsService {
     }
   }
 
-  async remove(id: string) {
+  async remove(id: string, userId: string) {
     // Verifica si el registro existe en la base de datos utilizando el ID proporcionado.
     const recordExists = await this.prisma.product.findUnique({
       where: { id }, // Filtra por el campo 'id'.
       include: {
         unit: true,
         categories: true,
-        branchProductInventory: true,
+        branchProductStock: true,
+        warehouseProductStock: true,
         types: true,
       }
     });
@@ -402,7 +571,7 @@ export class ProductsService {
 
     // Verifica si el producto tiene relaciones que lo bloquean para ser eliminado
     if (
-      recordExists.branchProductInventory.length > 0 || recordExists.types.length > 0 //|| // Tiene composiciones
+      recordExists.branchProductStock.length > 0 || recordExists.warehouseProductStock.length > 0 //|| // Tiene composiciones
       // (recordExists.orders && recordExists.orders.length > 0) // Relación con órdenes (si aplica)
     ) {
       throw new RpcException({
@@ -410,6 +579,10 @@ export class ProductsService {
         statusCode: HttpStatus.CONFLICT, // Envia el código 409 (conflicto)
       });
     }
+
+    await this.prisma.typeProduct.deleteMany({
+      where: { productId: id }
+    })
 
     // Elimina el registro encontrado en la BD usando el ID
     await this.prisma.product.delete({
@@ -422,4 +595,365 @@ export class ProductsService {
       product: recordExists
     }
   }
+
+  async validateProductsIds(ids: string[]) {
+    // Eliminar duplicados
+    ids = Array.from(new Set(ids));
+
+    // Validar sucursales existentes
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: {
+          in: ids
+        },
+      },
+    });
+
+    // Verificar que se encontraron todas
+    if (products.length !== ids.length) {
+      const foundIds = products.map(product => product.id);
+      const missingIds = ids.filter(id => !foundIds.includes(id));
+
+      throw new RpcException({
+        message: `No se encontraron los siguientes productos: ${missingIds.join(', ')}`,
+        statusCode: HttpStatus.BAD_REQUEST,
+      })
+    }
+
+    return products;
+  }
+
+  async verifyStockWarehouse(productId: string, warehouseId: string) {
+    try {
+      const warehouseStock = await this.prisma.warehouseProductStock.findFirst({
+        where: {
+          productId: productId,
+          warehouseId: warehouseId,
+        }
+      });
+
+      if (!warehouseStock) {
+        return 0;
+        // throw new RpcException({
+        //   message: `No se encontró stock para el producto con ID ${productId} en el almacén con ID ${warehouseId}.`,
+        //   statusCode: HttpStatus.BAD_REQUEST,
+        // });
+      }
+
+      return warehouseStock.stock;
+    } catch (error) {
+      if (error instanceof RpcException) throw error; // Si ya es una RpcException, re-lanzarla
+      console.error('Error en verifyStockWarehouse:', error); // Registrar el error para depuración
+      throw new RpcException({
+        message: 'Error al verificar el stock del producto.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // async updateOrCreateStockWarehouse(stockUpdates: { productId: string, warehouseId: string, quantity: number }[]) {
+  //   try {
+  //     const updatePromises = stockUpdates.map(async ({ productId, warehouseId, quantity }) => {
+  //       return this.prisma.warehouseProductStock.upsert({
+  //         where: {
+  //           productId_warehouseId: { productId, warehouseId } // Usa una clave compuesta si existe
+  //         },
+  //         update: {
+  //           stock: { increment: quantity } // Suma al stock existente
+  //         },
+  //         create: {
+  //           productId,
+  //           warehouseId,
+  //           stock: quantity // Crea un nuevo registro con la cantidad inicial
+  //         }
+  //       });
+  //     });
+
+  //     const results = await Promise.all(updatePromises);
+  //     return results;
+  //   } catch (error) {
+  //     console.error('Error en updateOrCreateStockWarehouse:', error);
+  //     throw new RpcException({
+  //       message: 'Error al actualizar o crear el stock en almacenes.',
+  //       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+  //     });
+  //   }
+  // }
+
+  async updateOrCreateStock(stockUpdates: { productId: string, branchOrWarehouse: 'BRANCH' | 'WAREHOUSE', updateId: string, quantity: number }[]) {
+    try {
+      const updatePromises = stockUpdates.map(async ({ productId, updateId, quantity, branchOrWarehouse }) => {
+        if (branchOrWarehouse === 'WAREHOUSE') {
+          return this.prisma.warehouseProductStock.upsert({
+            where: {
+              productId_warehouseId: { productId, warehouseId: updateId } // Usa una clave compuesta si existe
+            },
+            update: {
+              stock: { increment: quantity } // Suma al stock existente
+            },
+            create: {
+              productId,
+              warehouseId: updateId,
+              stock: quantity // Crea un nuevo registro con la cantidad inicial
+            }
+          });
+        }
+        if (branchOrWarehouse === 'BRANCH') {
+          return this.prisma.branchProductStock.upsert({
+            where: {
+              productId_branchId: { productId, branchId: updateId } // Usa una clave compuesta si existe
+            },
+            update: {
+              stock: { increment: quantity } // Suma al stock existente
+            },
+            create: {
+              productId,
+              branchId: updateId,
+              stock: quantity // Crea un nuevo registro con la cantidad inicial
+            }
+          });
+        }
+      });
+
+      const results = await Promise.all(updatePromises);
+      return results;
+    } catch (error) {
+      console.error('Error en updateOrCreateStockWarehouse:', error);
+      throw new RpcException({
+        message: 'Error al actualizar o crear el stock en sucursales o almacenes.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+
+  async verifyStockBranch(productId: string, branchId: string) {
+    try {
+      const branchStock = await this.prisma.branchProductStock.findFirst({
+        where: {
+          productId: productId,
+          branchId: branchId,
+        }
+      });
+
+      if (!branchStock) {
+        return 0;
+        // throw new RpcException({
+        //   message: `No se encontró stock para el producto con ID ${productId} en la sucursal con ID ${branchId}.`,
+        //   statusCode: HttpStatus.BAD_REQUEST,
+        // });
+      }
+
+      return branchStock.stock;
+    } catch (error) {
+      if (error instanceof RpcException) throw error; // Si ya es una RpcException, re-lanzarla
+      console.error('Error en verifyStockBranch:', error); // Registrar el error para depuración
+      throw new RpcException({
+        message: 'Error al verificar el stock del producto.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // async updateOrCreateStockBranch(stockUpdates: { productId: string, branchId: string, quantity: number }[]) {
+  //   try {
+  //     const updatePromises = stockUpdates.map(async ({ productId, branchId, quantity }) => {
+  //       return this.prisma.branchProductStock.upsert({
+  //         where: {
+  //           productId_branchId: { productId, branchId } // Usa una clave compuesta si existe
+  //         },
+  //         update: {
+  //           stock: { increment: quantity } // Suma al stock existente
+  //         },
+  //         create: {
+  //           productId,
+  //           branchId,
+  //           stock: quantity // Crea un nuevo registro con la cantidad inicial
+  //         }
+  //       });
+  //     });
+
+  //     const results = await Promise.all(updatePromises);
+  //     return results;
+  //   } catch (error) {
+  //     console.error('Error en updateOrCreateStockWarehouse:', error);
+  //     throw new RpcException({
+  //       message: 'Error al actualizar o crear el stock en almacenes.',
+  //       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+  //     });
+  //   }
+  // }
+
+
+  async getProductsByIds(ids: string[]) {
+    try {
+      if (!ids || ids.length === 0) {
+        return [];
+      }
+
+      // Consultar las sucursales en la db
+      const products = await this.prisma.product.findMany({
+        where: { id: { in: ids } },
+        include: {
+          unit: {
+            select: {
+              abbreviation: true,
+              name: true,
+            }
+          }
+        }
+      });
+
+      return products;
+    } catch (error) {
+      console.log('Error al obtener los productos', error);
+      return [];
+    }
+  }
+
+  async getLowStockProducts() {
+    try {
+      const lowStockMessages: { slug: string, message: string }[] = [];  // Definimos un arreglo de objetos con `slug` y `message`
+
+      // Obtener productos con su mínimo stock
+      const productsWithMinStock = await this.prisma.product.findMany({
+        select: { id: true, name: true, slug: true, minimumStock: true },
+      });
+
+      // Iterar sobre cada producto y verificar su stock en sucursales y almacenes
+      for (const product of productsWithMinStock) {
+        // Buscar stock en sucursales
+        const branchStocks = await this.prisma.branchProductStock.findMany({
+          where: {
+            productId: product.id,
+            stock: { lt: product.minimumStock },
+          },
+          // include: { branch: true }, // Incluir información de la sucursal
+        });
+
+        // Buscar stock en almacenes
+        const warehouseStocks = await this.prisma.warehouseProductStock.findMany({
+          where: {
+            productId: product.id,
+            stock: { lt: product.minimumStock },
+          },
+          // include: { warehouse: true }, // Incluir información del almacén
+        });
+
+        const branchStocksAndBranchName = await Promise.all(
+          branchStocks.map(async (bs) => {
+            try {
+              const branch = await firstValueFrom(
+                this.natsClient.send('findOneBranch', bs.branchId)
+              );
+
+              return {
+                ...bs,
+                nameBranch: branch?.name || null, // Manejar el caso de que `branch` sea `null`
+              };
+            } catch (error) {
+              console.error('Error fetching branch:', error);
+              return {
+                ...bs,
+                nameBranch: null, // Valor por defecto en caso de error
+              };
+            }
+          })
+        );
+
+        const warehouseStocksAndWarehouseName = await Promise.all(
+          warehouseStocks.map(async (ws) => {
+            try {
+              const warehouse = await firstValueFrom(
+                this.natsClient.send('findOneWarehouse', ws.warehouseId)
+              );
+
+              return {
+                ...ws,
+                nameWarehouse: warehouse?.name || null, // Manejar el caso de que `warehouse` sea `null`
+              };
+            } catch (error) {
+              console.error('Error fetching warehouse:', error);
+              return {
+                ...ws,
+                nameWarehouse: null, // Valor por defecto en caso de error
+              };
+            }
+          })
+        );
+
+        // Generar mensajes de sucursales
+        branchStocksAndBranchName.forEach(branchStock => {
+          lowStockMessages.push({
+            slug: product.slug,
+            message: `El producto '${product.name}' tiene bajo stock en la sucursal '${branchStock.nameBranch}' (Stock: ${branchStock.stock}, Mínimo: ${product.minimumStock}).`,
+          });
+        });
+
+        // Generar mensajes de almacenes
+        warehouseStocksAndWarehouseName.forEach(warehouseStock => {
+          lowStockMessages.push({
+            slug: product.slug,
+            message: `El producto '${product.name}' tiene bajo stock en el almacén '${warehouseStock.nameWarehouse}' (Stock: ${warehouseStock.stock}, Mínimo: ${product.minimumStock}).`
+          });
+        });
+      }
+
+      return lowStockMessages;
+    } catch (error) {
+      console.error("Error al obtener productos con bajo stock:", error);
+      throw new Error("No se pudo obtener la lista de productos con bajo stock");
+    } finally {
+      await this.prisma.$disconnect();
+    }
+  }
+
+
+  async stockWarehouseExists(warehouseId: string) {
+    try {
+      const warehouseStock = await this.prisma.warehouseProductStock.findFirst({
+        where: {
+          warehouseId: warehouseId,
+        }
+      });
+
+      if (!warehouseStock) {
+        return false;
+      } else {
+        return true;
+      }
+
+    } catch (error) {
+      if (error instanceof RpcException) throw error; // Si ya es una RpcException, re-lanzarla
+      console.error('Error en stockWarehouseExists:', error); // Registrar el error para depuración
+      throw new RpcException({
+        message: 'Error al verificar si existe stock en el almacén.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  async stockBranchExists(branchId: string) {
+    try {
+      const branchStock = await this.prisma.branchProductStock.findFirst({
+        where: {
+          branchId: branchId,
+        }
+      });
+
+      if (!branchStock) {
+        return false;
+      } else {
+        return true;
+      }
+    } catch (error) {
+      if (error instanceof RpcException) throw error; // Si ya es una RpcException, re-lanzarla
+      console.error('Error en stockBranchExists:', error); // Registrar el error para depuración
+      throw new RpcException({
+        message: 'Error al verificar si existe stock en la sucursal.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
 }

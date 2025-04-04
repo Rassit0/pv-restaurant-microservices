@@ -19,7 +19,7 @@ export class RolesController {
   }
 
   @MessagePattern('findOneRole')
-  findOne(@Payload() id: number) {
+  findOne(@Payload() id: string) {
     return this.rolesService.findOne(id);
   }
 

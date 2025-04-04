@@ -15,6 +15,17 @@ export class SuppliersService {
     try {
       const { contactsInfo, ...data } = createSupplierDto;
 
+      const existingSupplier = await this.prisma.supplier.findFirst({
+        where: { name: data.name },
+      });
+
+      if (existingSupplier) {
+        throw new RpcException({
+          message: 'El nombre de la sucursal ya está en uso.',
+          statusCode: HttpStatus.BAD_REQUEST,
+        });
+      }
+
       // Verificar si el taxtIs existe
       if (data.taxId) {
         const taxIdSupplierExists = await this.prisma.supplier.findUnique({
@@ -181,6 +192,19 @@ export class SuppliersService {
         });
       }
 
+      const existingSupplier = await this.prisma.supplier.findFirst({
+        where: {
+          name: data.name,
+          id: { not: id },
+        },
+      });
+
+      if (existingSupplier) {
+        throw new RpcException({
+          message: 'El nombre de la sucursal ya está en uso.',
+          statusCode: HttpStatus.BAD_REQUEST,
+        });
+      }
       // Verificar si el taxtIs existe
       if (data.taxId) {
         const taxIdSupplierExists = await this.prisma.supplier.findFirst({

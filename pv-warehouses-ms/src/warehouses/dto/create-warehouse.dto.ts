@@ -34,9 +34,9 @@ export class CreateWarehouseDto {
     @Type(() => WarehouseBranchDto)
     branches?: WarehouseBranchDto[];
 
-    @IsArray({ message: 'Debe agregar las usuarios que tendrán acceso a este almacén.' })
-    @ValidateNested({ each: true })
-    @Type(() => UsersAccess)
-    usersAccess?: UsersAccess[];
+    // @IsArray({ message: 'Debe agregar las usuarios que tendrán acceso a este almacén.' })
+    // @ValidateNested({ each: true })
+    // @Type(() => UsersAccess)
+    // usersAccess?: UsersAccess[];
 
 }

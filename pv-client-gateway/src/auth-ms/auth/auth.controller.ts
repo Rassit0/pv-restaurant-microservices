@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { NATS_SERVICE } from 'src/config';
 import { RegisterUserDto } from './dto/register-user.dto';
@@ -7,6 +7,7 @@ import { AuthGuard } from './guards/auth.guard';
 import { Token } from './decorators/token.decorator';
 import { catchError } from 'rxjs';
 import { UsersPaginationDto } from './dto/users-pagination..dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,6 +18,17 @@ export class AuthController {
   @Post("register")
   registerUser(@Body() registerUserDto: RegisterUserDto) {
     return this.client.send('auth.user.register', registerUserDto)
+      .pipe(
+        catchError(error => {
+          throw new RpcException(error);
+        })
+      );
+  }
+
+  @UseGuards(AuthGuard)
+  @Patch("updateUser/:id")
+  updateUser(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    return this.client.send('auth.update.user', { id, ...updateUserDto })
       .pipe(
         catchError(error => {
           throw new RpcException(error);
@@ -47,13 +59,25 @@ export class AuthController {
       );
   }
 
-   @Get('users')
-    findAll(@Query() paginationDto: UsersPaginationDto) {
-      return this.client.send("auth.user.findAll", paginationDto)
-        .pipe(
-          catchError(error => {
-            throw new RpcException(error)
-          })
-        )
-    }
+  @UseGuards(AuthGuard)
+  @Get('users')
+  findAll(@Query() paginationDto: UsersPaginationDto) {
+    return this.client.send("auth.user.findAll", paginationDto)
+      .pipe(
+        catchError(error => {
+          throw new RpcException(error)
+        })
+      )
+  }
+
+  @UseGuards(AuthGuard)
+  @Get('users/:id')
+  findOne(@Param('id') id: string) {
+    return this.client.send("auth.user.findOne", id)
+      .pipe(
+        catchError(error => {
+          throw new RpcException(error)
+        })
+      );
+  }
 }

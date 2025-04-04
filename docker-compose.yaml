@@ -72,7 +72,29 @@ services:
       - 5436:5432
     volumes:
       - ./pv-products-ms/postgres:/var/lib/postgresql/data
+  pv-production-db-postgres:
+    image: postgres
+    container_name: pv_production_database
+    environment:
+      POSTGRES_DB: production
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5437:5432
+    volumes:
+      - ./pv-production-ms/postgres:/var/lib/postgresql/data
+  pv-inventory-db-postgres:
+    image: postgres
+    container_name: pv_inventory_database
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5438:5432
+    volumes:
+      - ./pv-inventory-ms/postgres:/var/lib/postgresql/data
 
 
-# Ejecutar docker docker compose up -d
+# Ejecutar docker compose up -d
 # docker compose -f docker-compose.prod.yaml up 

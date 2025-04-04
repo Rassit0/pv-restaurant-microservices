@@ -6,7 +6,6 @@ import { RpcException } from '@nestjs/microservices';
 const modelMap = {
   product: (prisma: PrismaService) => prisma.product,
   category: (prisma: PrismaService) => prisma.category,
-  season: (prisma: PrismaService) => prisma.season,
   unit: (prisma: PrismaService) => prisma.unit,
   // Añade aquí otros modelos que necesites
 };

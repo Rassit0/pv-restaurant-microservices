@@ -25,6 +25,29 @@ export class RolesService {
       const newRecord = await this.prisma.role.create({
         data: { ...createRoleDto },
         include: {
+          roleModule: {
+            select: {
+              module: {
+                select: {
+                  name: true,
+                  parentModule: {
+                    select: {
+                      name: true
+                    }
+                  }
+                }
+              },
+              roleModulePermission: {
+                select: {
+                  permission: {
+                    select: {
+                      name: true
+                    }
+                  },
+                }
+              }
+            }
+          },
           users: {
             select: {
               email: true,
@@ -48,26 +71,100 @@ export class RolesService {
   }
 
   async findAll() {
-    const roles = await this.prisma.role.findMany({
-      include: {
-        users: {
-          select: {
-            email: true,
+    try {
+      const roles = await this.prisma.role.findMany({
+        include: {
+          roleModule: {
+            select: {
+              module: {
+                select: {
+                  name: true,
+                  parentModule: {
+                    select: {
+                      name: true
+                    }
+                  }
+                }
+              },
+              roleModulePermission: {
+                select: {
+                  permission: {
+                    select: {
+                      name: true
+                    }
+                  },
+                }
+              }
+            }
+          },
+          users: {
+            select: {
+              email: true,
+            },
           },
         },
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    });
+        orderBy: {
+          name: 'asc',
+        },
+      });
 
-    return {
-      roles
+      return {
+        roles
+      }
+    } catch (error) {
+      if (error instanceof RpcException) throw error;
+      console.log(error);
+      throw new RpcException({
+        message: 'Ocurrió un error al buscar el usuario',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR
+      })
     }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} role`;
+  async findOne(id: string) {
+    try {
+      const role = await this.prisma.role.findUnique({
+        where: { id },
+        include: {
+          roleModule: {
+            select: {
+              module: {
+                select: {
+                  name: true,
+                  parentModule: {
+                    select: {
+                      name: true
+                    }
+                  }
+                }
+              },
+              roleModulePermission: {
+                select: {
+                  permission: {
+                    select: {
+                      name: true
+                    }
+                  },
+                }
+              }
+            }
+          },
+          users: {
+            select: {
+              email: true,
+            },
+          },
+        },
+      });
+      return role;
+    } catch (error) {
+      if (error instanceof RpcException) throw error;
+      console.log(error);
+      throw new RpcException({
+        message: 'Ocurrió un error al buscar el usuario',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR
+      })
+    }
   }
 
   async update(id: string, updateRoleDto: UpdateRoleDto) {
@@ -77,6 +174,36 @@ export class RolesService {
           name: updateRoleDto.name,
           id: { not: id }
         },
+        include: {
+          roleModule: {
+            select: {
+              module: {
+                select: {
+                  name: true,
+                  parentModule: {
+                    select: {
+                      name: true
+                    }
+                  }
+                }
+              },
+              roleModulePermission: {
+                select: {
+                  permission: {
+                    select: {
+                      name: true
+                    }
+                  },
+                }
+              }
+            }
+          },
+          users: {
+            select: {
+              email: true,
+            }
+          }
+        }
       });
       if (roleExits) {
         throw new RpcException({
@@ -122,17 +249,17 @@ export class RolesService {
       }
 
       // Verificar si el rol tiene relaciones
-      if (roleExists.users && roleExists.users.length > 0){
+      if (roleExists.users && roleExists.users.length > 0) {
         throw new RpcException({
           message: "No se puede eliminar el rol porque está asociado a uno o más usuarios",
           statusCode: HttpStatus.BAD_REQUEST,
         })
       }
 
-        // Eliminar el rol
-        const role = await this.prisma.role.delete({
-          where: { id },
-        });
+      // Eliminar el rol
+      const role = await this.prisma.role.delete({
+        where: { id },
+      });
       return {
         message: "Rol eliminado con éxito",
         role
