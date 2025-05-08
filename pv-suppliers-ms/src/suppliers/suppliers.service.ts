@@ -1,29 +1,69 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { RpcException } from '@nestjs/microservices';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
+import { SupplierPaginationDto } from './dto/supplier-pagination.dto';
+import { catchError, firstValueFrom, of } from 'rxjs';
+import { NATS_SERVICE } from 'src/config';
 
 @Injectable()
 export class SuppliersService {
 
   constructor(
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(NATS_SERVICE) private readonly natsClient: ClientProxy
   ) { }
 
   async create(createSupplierDto: CreateSupplierDto) {
     try {
-      const { contactsInfo, ...data } = createSupplierDto;
+      const { contactsInfo, personId, ...data } = createSupplierDto;
 
-      const existingSupplier = await this.prisma.supplier.findFirst({
-        where: { name: data.name },
-      });
-
-      if (existingSupplier) {
-        throw new RpcException({
-          message: 'El nombre de la sucursal ya está en uso.',
-          statusCode: HttpStatus.BAD_REQUEST,
+      if (personId) {
+        const existingSupplierIndividual = await this.prisma.supplier.findFirst({
+          where: { personId },
         });
+
+        if (existingSupplierIndividual) {
+          throw new RpcException({
+            message: 'El proveedor individual (personId) ya está en registrado.',
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
+        }
+      }
+
+      const person = personId ? await firstValueFrom(
+        this.natsClient.send('findOnePerson', personId).pipe(
+          catchError((error) => {
+            if (error.message && error.statusCode) {
+              // Solo volvemos a lanzar el RpcException capturado
+              throw new RpcException({
+                message: error.message,
+                statusCode: error.statusCode,
+              });
+            } else {
+              console.error('Error fetching findOne:', error);
+              throw new RpcException({
+                message: 'Error al obtener el persona',
+                statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+              })
+            }
+            return of(null);
+          })
+        )
+      ) : null;
+
+      if (data.name) {
+        const existingSupplier = await this.prisma.supplier.findFirst({
+          where: { name: data.name },
+        });
+
+        if (existingSupplier) {
+          throw new RpcException({
+            message: 'El nombre de la sucursal ya está en uso.',
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
+        }
       }
 
       // Verificar si el taxtIs existe
@@ -50,6 +90,12 @@ export class SuppliersService {
 
           const { email, phoneNumber, isPrimary } = contact;
 
+          if (contact.id) {
+            throw new RpcException({
+              message: 'El id del contacto no debe estar presente al crear proveedor.',
+              statusCode: HttpStatus.BAD_REQUEST,
+            });
+          }
           // Verificar duplicados en la misma lista
           if (email && emails.has(email)) {
             throw new RpcException({
@@ -102,7 +148,9 @@ export class SuppliersService {
       // Crear el proveedor y los contactos
       const supplier = await this.prisma.supplier.create({
         data: {
+          name: person.name || data.name,
           ...data,
+          personId,
           contactInfo: {
             create: contactsInfo,
           },
@@ -114,7 +162,10 @@ export class SuppliersService {
 
       return {
         message: 'Proveedor creado con éxito.',
-        supplier
+        supplier: {
+          ...supplier,
+          person
+        }
       }
     } catch (error) {
       if (error instanceof RpcException) throw error;
@@ -126,25 +177,91 @@ export class SuppliersService {
     }
   }
 
-  async findAll() {
+  async findAll(paginationDto: SupplierPaginationDto) {
     try {
+      const { limit, page, search, orderBy, columnOrderBy, supplierIds, status } = paginationDto;
+      // Calcular el offset para la paginación
+      const skip = limit ? (page - 1) * limit : undefined;
       const suppliers = await this.prisma.supplier.findMany({
-        include: {
-          contactInfo: true,
+        skip, // Desplazamiento para la paginación
+        take: limit ? limit : undefined, // si es 0 devuelve todo
+        where: {
+          ...(supplierIds && supplierIds.length > 0 ? { id: { in: supplierIds } } : {}),
+          OR: search
+            ? [
+              // Coincidencia para el nombre
+              { name: { contains: search, mode: 'insensitive' } },
+              // Coincidencia para el primer apellido
+              { address: { contains: search, mode: 'insensitive' } },
+              { city: { contains: search, mode: 'insensitive' } },
+              { country: { contains: search, mode: 'insensitive' } },
+              { state: { contains: search, mode: 'insensitive' } },
+              // Ahora manejamos la búsqueda separada por cada palabra
+              // Manejo de búsqueda separada por espacio o `+`
+              {
+                AND: search.split(/[\s+]+/).map(word => ({
+                  OR: [
+                    { address: { contains: word, mode: 'insensitive' } },
+                    { city: { contains: word, mode: 'insensitive' } },
+                    { country: { contains: word, mode: 'insensitive' } },
+                    { state: { contains: word, mode: 'insensitive' } },
+                    // { secondLastname: { contains: word, mode: 'insensitive' } },
+                  ]
+                }))
+              }
+            ]
+            : undefined,
+          // Filtro para el campo status (si está presente en el DTO)
+          ...((status && status !== 'all') && { isActive: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
         },
         orderBy: {
-          name: 'asc'
+          [columnOrderBy]: orderBy
+        },
+        include: {
+          contactInfo: true
         }
       });
 
+      const totalItems = await this.prisma.supplier.count({
+        where: {
+          ...(supplierIds && supplierIds.length > 0 ? { id: { in: supplierIds } } : {}),
+          OR: search
+            ? [
+              { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
+              { address: { contains: search, mode: 'insensitive' } },
+            ]
+            : undefined,
+        },
+      });
+      // Obtener personas para cada proveedor
+      const personsWithWarehouses = await Promise.all(
+        suppliers.map(async (supplier) => {
+          // Enviar solicitud al servicio de sucursales para validar los branchIds
+          const person = await firstValueFrom(
+            this.natsClient.send('findOnePerson', supplier.personId).pipe(
+              catchError((error) => {
+                // console.error('Error fetching findOne:', error);
+                return of(null);
+              })
+            )
+          );
+          return { ...supplier, person };
+        })
+      );
+
       return {
-        suppliers
-      }
+        suppliers: personsWithWarehouses,
+        meta: {
+          totalItems, // Total de productos encontrados
+          itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
+          totalPages: limit ? Math.ceil(totalItems / limit) : 1, // Total de páginas
+          currentPage: page, // Página actual
+        }
+      };
     } catch (error) {
-      if (error instanceof RpcException) throw error;
-      console.log(error);
+      console.log('Error al obtener la lista de personas:', error);
       throw new RpcException({
-        message: 'Error al obtener la lista de proveedores.',
+        message: 'Error al obtener la lista de personas.',
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       })
     }
@@ -192,18 +309,21 @@ export class SuppliersService {
         });
       }
 
-      const existingSupplier = await this.prisma.supplier.findFirst({
-        where: {
-          name: data.name,
-          id: { not: id },
-        },
-      });
-
-      if (existingSupplier) {
-        throw new RpcException({
-          message: 'El nombre de la sucursal ya está en uso.',
-          statusCode: HttpStatus.BAD_REQUEST,
+      if (data.name) {
+        const duplicateSupplier = await this.prisma.supplier.findFirst({
+          where: {
+            name: data.name,
+            id: { not: id },
+          },
         });
+
+
+        if (duplicateSupplier !== null) {
+          throw new RpcException({
+            message: 'El nombre del proveedor ya está en uso.',
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
+        }
       }
       // Verificar si el taxtIs existe
       if (data.taxId) {
@@ -309,6 +429,7 @@ export class SuppliersService {
         where: { id },
         data: {
           ...data,
+          ...((data.type === 'COMPANY') && { personId: null }),
           ...(contactsInfo && contactsInfo.length > 0 && {
             contactInfo: {
               update: contactsInfo.filter(contact => contact.id).map(contact => ({

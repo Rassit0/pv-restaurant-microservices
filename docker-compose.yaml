@@ -94,6 +94,17 @@ services:
       - 5438:5432
     volumes:
       - ./pv-inventory-ms/postgres:/var/lib/postgresql/data
+  pv-persons-db-postgres:
+    image: postgres
+    container_name: pv_persons_database
+    environment:
+      POSTGRES_DB: persons
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5439:5432
+    volumes:
+      - ./pv-persons-ms/postgres:/var/lib/postgresql/data  
 
 
 # Ejecutar docker compose up -d

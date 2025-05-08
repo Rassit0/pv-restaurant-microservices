@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, UseGuards, Query } from '@nestjs/common';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { NATS_SERVICE } from 'src/config';
@@ -34,8 +34,8 @@ export class SuppliersController {
   @UseGuards(ModulePermissionAccessGuard)
   @ModulePermissionsGuard(['READ'])
   @Get()
-  findAll() {
-    return this.natsClient.send("findAllSuppliers", {})
+  findAll(@Query() paginationDto: any) {
+    return this.natsClient.send("findAllSuppliers", paginationDto)
       .pipe(
         catchError(error => {
           console.log(error)

@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Person {
+  id              String    @id @default(uuid())
+  name            String
+  lastname        String
+  secondLastname  String?   @map("second_lastname")
+  nit             String    @unique // ← Asumiendo que es como un NIT o CI único
+  imageUrl        String? // ← Puede ser null
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  updatedByUserId String    @map("updated_by_user_id") // ID del usuario que actualiza la receta
+  createdByUserId String    @map("created_by_user_id") // ID del usuario que crea la receta
+  deletedByUserId String?   @map("deleted_by_user_id")
+
+  @@map("persons")
+}

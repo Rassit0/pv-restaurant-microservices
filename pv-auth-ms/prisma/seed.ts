@@ -29,6 +29,7 @@ async function main() {
             { name: 'SUPPLIERS_CONTACTS', parent: 'SUPPLIERS' },
             { name: 'WAREHOUSES' },
             { name: 'HOME' },
+            { name: 'PERSONS' },
         ];
 
         const moduleRecords: Record<string, any> = {};
@@ -55,7 +56,7 @@ async function main() {
         console.log('Módulos creados correctamente con jerarquía');
 
         // Insertar permisos
-        const permissions = ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'];
+        const permissions = ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'];
 
         for (const permissionName of permissions) {
             await tx.permission.upsert({
@@ -93,30 +94,31 @@ async function main() {
         // Asignar módulos y permisos a roles
         const roleModulesPermissionsMap = {
             super_admin: {
-                USERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                USERS_ROLES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
+                USERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                USERS_ROLES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 REPORTS: ['READ'],
-                INVENTORY: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
+                INVENTORY: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 INVENTORY_INCOME: ['WRITE', 'READ', 'EDIT'],
                 INVENTORY_OUTCOME: ['WRITE', 'READ', 'EDIT'],
                 INVENTORY_TRANSFER: ['WRITE', 'READ', 'EDIT'],
                 INVENTORY_ADJUSTMENT: ['WRITE', 'READ', 'EDIT'],
-                PRODUCTS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                PRODUCTS_CATEGORIES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                PRODUCTS_UNITS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
+                PRODUCTS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                PRODUCTS_CATEGORIES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                PRODUCTS_UNITS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 SETTINGS: ['MANAGE'],
-                BRANCHES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                PRODUCTION: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                PRODUCTION_RECIPES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                PRODUCTION_ORDERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
+                BRANCHES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                PRODUCTION: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                PRODUCTION_RECIPES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                PRODUCTION_ORDERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 PRODUCTION_RECIPES_ENTRY: ['WRITE', 'READ', 'EDIT'],
                 PRODUCTION_RECIPES_EXIT: ['WRITE', 'READ', 'EDIT'],
-                SUPPLIERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                SUPPLIERS_CONTACTS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                WAREHOUSES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                HOME: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
-                NOTIFICATIONS:['READ'],
-                NOTIFICATIONS_LOW_STOCK:['READ'],
+                SUPPLIERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                SUPPLIERS_CONTACTS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                WAREHOUSES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                HOME: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                PERSONS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
+                NOTIFICATIONS: ['READ'],
+                NOTIFICATIONS_LOW_STOCK: ['READ'],
             },
             administrador: {
                 USERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
@@ -138,8 +140,9 @@ async function main() {
                 SUPPLIERS: ['MANAGE', 'WRITE', 'READ'],
                 SUPPLIERS_CONTACTS: ['MANAGE', 'WRITE', 'READ'],
                 WAREHOUSES: ['MANAGE', 'WRITE', 'READ'],
-                NOTIFICATIONS_LOW_STOCK:['READ'],
+                NOTIFICATIONS_LOW_STOCK: ['READ'],
                 HOME: ['READ'],
+                PERSONS: ['MANAGE', 'WRITE', 'READ', 'DELETE'],
             },
             encargado_inventario: {
                 INVENTORY: ['READ', 'EDIT', 'WRITE'],
@@ -150,12 +153,13 @@ async function main() {
                 PRODUCTS_CATEGORIES: ['READ'],
                 PRODUCTS_UNITS: ['READ'],
                 BRANCHES: ['READ'],
-                NOTIFICATIONS:['READ'],
-                NOTIFICATIONS_LOW_STOCK:['READ'],
+                NOTIFICATIONS: ['READ'],
+                NOTIFICATIONS_LOW_STOCK: ['READ'],
                 HOME: ['READ'],
                 PRODUCTION: ['READ', 'WRITE'],
                 PRODUCTION_ORDERS: ['READ'],
                 SUPPLIERS: ['READ'],
+                PERSONS: ['READ', 'WRITE'],
             },
             cocinero: {
                 PRODUCTION: ['READ', 'WRITE'],
@@ -166,11 +170,11 @@ async function main() {
                 PRODUCTS_UNITS: ['READ'],
                 // PRODUCTION_RECIPES_ENTRY: ['WRITE', 'READ'],
                 PRODUCTION_RECIPES_EXIT: ['WRITE', 'READ'],
-                NOTIFICATIONS:['READ'],
+                NOTIFICATIONS: ['READ'],
                 BRANCHES: ['READ'],
                 SUPPLIERS: ['READ'],
                 WAREHOUSES: ['READ'],
-                NOTIFICATIONS_LOW_STOCK:['READ'],
+                NOTIFICATIONS_LOW_STOCK: ['READ'],
                 HOME: ['READ'],
             }
         };

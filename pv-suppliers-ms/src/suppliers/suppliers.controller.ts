@@ -3,10 +3,11 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
+import { SupplierPaginationDto } from './dto/supplier-pagination.dto';
 
 @Controller()
 export class SuppliersController {
-  constructor(private readonly suppliersService: SuppliersService) {}
+  constructor(private readonly suppliersService: SuppliersService) { }
 
   @MessagePattern('createSupplier')
   create(@Payload() createSupplierDto: CreateSupplierDto) {
@@ -14,8 +15,8 @@ export class SuppliersController {
   }
 
   @MessagePattern('findAllSuppliers')
-  findAll() {
-    return this.suppliersService.findAll();
+  findAll(@Payload() paginationDto: SupplierPaginationDto) {
+    return this.suppliersService.findAll(paginationDto);
   }
 
   @MessagePattern('findOneSupplier')

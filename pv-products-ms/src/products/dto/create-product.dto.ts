@@ -100,15 +100,15 @@ export class CreateProductDto {
     @IsNotEmpty({ message: "El id del usuario es requerido." })
     userId: string
 
-    @IsOptional()
-    @IsArray({ message: "Debe agregar el o los proveedores." })
-    @ValidateNested({ each: true })
-    @Type(() => suppliersProductDto) // Asocia ProductBranchStockDto
-    suppliersProduct?: suppliersProductDto[]; // Agregado como un arreglo
+    // @IsOptional()
+    // @IsArray({ message: "Debe agregar el o los proveedores." })
+    // @ValidateNested({ each: true })
+    // @Type(() => suppliersProductDto) // Asocia ProductBranchStockDto
+    // suppliersProduct?: suppliersProductDto[]; // Agregado como un arreglo
 }
 
-export class suppliersProductDto{
-    @IsString({ message: 'El ID del proveedor (supplierId) debe ser un texto válido.' })
-    @IsNotEmpty({ message: 'El ID del proveedor es obligatorio.' })
-    supplierId: string;
-}
+// export class suppliersProductDto{
+//     @IsString({ message: 'El ID del proveedor (supplierId) debe ser un texto válido.' })
+//     @IsNotEmpty({ message: 'El ID del proveedor es obligatorio.' })
+//     supplierId: string;
+// }

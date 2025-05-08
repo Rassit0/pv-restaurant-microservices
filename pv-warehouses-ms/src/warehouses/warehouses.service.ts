@@ -451,7 +451,7 @@ export class WarehousesService {
       const missingIds = ids.filter(id => !foundIds.includes(id));
 
       throw new RpcException({
-        message: `No se encontraron las siguientes almacenes: ${missingIds.join(', ')}`,
+        message: `No se encontraron los siguientes almacenes: ${missingIds.join(', ')}`,
         statusCode: HttpStatus.BAD_REQUEST,
       })
     }

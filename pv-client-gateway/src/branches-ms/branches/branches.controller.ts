@@ -18,8 +18,8 @@ export class BranchesController {
     @Inject(NATS_SERVICE) private readonly client: ClientProxy
   ) { }
 
-    @UseGuards(ModulePermissionAccessGuard)
-    @ModulePermissionsGuard(['WRITE'])
+  @UseGuards(ModulePermissionAccessGuard)
+  @ModulePermissionsGuard(['WRITE'])
   @Post()
   create(@Body() createCategoryDto: CreateBranchDto) {
     return this.client.send('createBranch', createCategoryDto)

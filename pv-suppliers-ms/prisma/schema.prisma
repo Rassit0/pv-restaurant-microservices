@@ -13,20 +13,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SupplierType {
+  INDIVIDUAL
+  COMPANY
+}
+
 model Supplier {
-  id         String    @id @default(uuid()) // ID único
-  name       String // Nombre del proveedor
+  id         String       @id @default(uuid()) // ID único
+  type       SupplierType @default(COMPANY)
+  personId   String?      @map("person_id")
+  name       String // Nombre del proveedor (o nombre completo si es persona)
   address    String? // Dirección física (opcional)
   city       String? // Ciudad (opcional)
   state      String? // Estado o provincia (opcional)
   country    String? // País (opcional)
   zipCode    String? // Código postal (opcional)
-  websiteUrl String?   @map("website_url") // Sitio web del proveedor (opcional)
-  taxId      String?   @unique // Número de identificación fiscal (opcional, único) NIT
-  isActive   Boolean   @default(true) @map("is_active") // Si el proveedor está activo o no
-  createdAt  DateTime  @default(now()) @map("created_at") // Fecha de creación
-  updatedAt  DateTime  @updatedAt @map("updated_at") // Fecha de última actualización
-  deletedAt  DateTime? @map("deleted_at") // Marca la eliminación lógica (null si no está eliminado)
+  websiteUrl String?      @map("website_url") // Sitio web del proveedor (opcional)
+  taxId      String?      @unique // Número de identificación fiscal (opcional, único) NIT
+  isActive   Boolean      @default(true) @map("is_active") // Si el proveedor está activo o no
+  createdAt  DateTime     @default(now()) @map("created_at") // Fecha de creación
+  updatedAt  DateTime     @updatedAt @map("updated_at") // Fecha de última actualización
+  deletedAt  DateTime?    @map("deleted_at") // Marca la eliminación lógica (null si no está eliminado)
 
   contactInfo ContactInfo[] // Relación con ContactInfo
 

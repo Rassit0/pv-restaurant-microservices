@@ -11,11 +11,12 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { RecipesModule } from './production/recipes/recipes.module';
 import { ProductionModule } from './production/production/production.module';
 import { EntryModule } from './inventory/entry/entry.module';
-import { TransactionModule } from './inventory/transaction/transaction.module';
+import { MovementsModule } from './inventory/movements/movements.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PersonsModule } from './persons-ms/persons/persons.module';
 
 @Module({
-  imports: [NatsModule, ProductsModule, CategoriesModule, UnitsModule, AuthModule, RolesModule, BranchesModule, WarehousesModule, SuppliersModule, RecipesModule, ProductionModule, EntryModule, TransactionModule, NotificationsModule],
+  imports: [NatsModule, ProductsModule, CategoriesModule, UnitsModule, AuthModule, RolesModule, BranchesModule, WarehousesModule, SuppliersModule, RecipesModule, ProductionModule, EntryModule, MovementsModule, NotificationsModule, PersonsModule],
   controllers: [],
   providers: [],
 })

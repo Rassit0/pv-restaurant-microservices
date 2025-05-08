@@ -51,7 +51,6 @@ export class ProductsService {
         categories,
         branchProductStock,
         warehouseProductStock,
-        suppliersProduct,
         typesProduct,
         userId,
         ...productData // El resto de las propiedades se asignan a productData
@@ -129,11 +128,6 @@ export class ProductsService {
           warehouseProductStock: warehouseProductStock
             ? {
               create: warehouseProductStock
-            }
-            : undefined,
-          suppliersProduct: suppliersProduct
-            ? {
-              create: suppliersProduct
             }
             : undefined,
           types: {
@@ -217,11 +211,6 @@ export class ProductsService {
           categories: true,
           branchProductStock: true,
           warehouseProductStock: true,
-          suppliersProduct: {
-            select: {
-              supplierId: true,
-            }
-          },
           types: true,
         }
       });
@@ -342,11 +331,6 @@ export class ProductsService {
         categories: true,
         branchProductStock: true,
         warehouseProductStock: true,
-        suppliersProduct: {
-          select: {
-            supplierId: true,
-          }
-        },
         types: true,
       }
     });
@@ -432,7 +416,7 @@ export class ProductsService {
           },
         });
 
-        if (duplicateProduct) {
+        if (duplicateProduct === null) {
           throw new RpcException({
             message: "El nombre del producto ya está en uso",
             statusCode: HttpStatus.BAD_REQUEST, // Envia el código 400
@@ -445,7 +429,6 @@ export class ProductsService {
         categories,
         branchProductStock,
         warehouseProductStock,
-        suppliersProduct,
         unitId,
         typesProduct,
         userId,
@@ -498,16 +481,16 @@ export class ProductsService {
               }
             }
           }),
-          ...(suppliersProduct && {
-            suppliersProduct: {
-              deleteMany: {
-                productId: id, // Elimina inventarios anteriores relacionados al producto
-              },
-              createMany: {
-                data: suppliersProduct
-              }
-            }
-          }),
+          // ...(suppliersProduct && {
+          //   suppliersProduct: {
+          //     deleteMany: {
+          //       productId: id, // Elimina inventarios anteriores relacionados al producto
+          //     },
+          //     createMany: {
+          //       data: suppliersProduct
+          //     }
+          //   }
+          // }),
           ...(typesProduct && {
             types: {
               deleteMany: {

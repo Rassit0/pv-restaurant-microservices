@@ -7,14 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Tipos de movimiento de inventario
-enum InventoryMovementType {
-  INCOME // Entrada de inventario (compra, devolución)
-  OUTCOME // Salida de inventario (venta, desperdicio)
-  ADJUSTMENT // Ajuste manual de stock
-  TRANSFER // Transferencia entre almacenes/sucursales
-}
-
 enum AdjustmentType {
   INCOME // Ajuste de entrada (agregar stock)
   OUTCOME // Ajuste de salida (reducir stock)
@@ -27,71 +19,177 @@ enum StatusInventoryMovement {
   COMPLETED // Opcional: Estado final después de procesar el movimiento
 }
 
+enum InventoryMovementType {
+  INCOME
+  OUTCOME
+  TRANSFER
+  ADJUSTMENT
+}
+
+model Income {
+  inventoryMovementId String @id @map("inventory_movement_id") // Relación con InventoryMovement
+
+  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id]) // Relación con InventoryMovement
+
+  @@map("income")
+}
+
+model Outcome {
+  inventoryMovementId String @id @map("inventory_movement_id") // Relación con InventoryMovement
+
+  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id]) // Relación con InventoryMovement
+
+  @@map("outcome")
+}
+
+model Transfer {
+  inventoryMovementId String @id @map("inventory_movement_id") // Relación con InventoryMovement
+
+  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id]) // Relación con InventoryMovement
+
+  @@map("transfer")
+}
+
+model Adjustment {
+  id                    String            @id @default(uuid()) // ID único del ajuste
+  inventoryMovementId   String            @unique @map("inventory_movement_id") // Relación con InventoryMovement
+  adjustmentType        AdjustmentType?   @map("adjustment_type") // Tipo de ajuste (solo si es AJUSTE)
+  adjustmentReason      AdjustmentReason? @map("adjustment_reason") // Razón del ajuste (solo si es AJUSTE)
+  otherAdjustmentReason String?           @map("other_adjustment_reason") // Descripción adicional si el ajuste es "OTHER"
+
+  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id]) // Relación con InventoryMovement
+
+  @@map("adjustment")
+}
+
 /// Modelo de Movimientos de Inventario
 model InventoryMovement {
-  id             String                     @id @default(uuid()) // ID único del movimiento
-  movementType   InventoryMovementType      @map("movement_type") // Tipo de movimiento
-  adjustmentType AdjustmentType?            @map("adjustment_type") // Tipo de ajuste (solo si es AJUSTE)
-  status         StatusInventoryMovement @default(PENDING) @map("status") // Estado del movimiento
-  description    String?                    @map("description") // Solo obligatorio para ajustes
+  id           String                @id @default(uuid()) // ID único del movimiento
+  movementType InventoryMovementType @map("movement_type") // Tipo de movimiento
+
+  status      StatusInventoryMovement @default(PENDING) @map("status") // Estado del movimiento
+  description String?                 @map("description") // Opcional pero obligatorio en ajuste
 
   createdByUserId String    @map("created_by_user_id") // Usuario que realizó el movimiento
   updatedByUserId String?   @map("updated_by_user_id") // Usuario que realizó el movimiento
   createdAt       DateTime  @default(now()) @map("created_at") // Fecha de creación
-  entryDate       DateTime? @map("entry_date") // Fecha de creación
+  deliveryDate    DateTime? @map("delivery_date") // Fecha de entrega
   updatedAt       DateTime  @updatedAt @map("updated_at") // Última actualización
 
-  // Relación con los productos afectados por el movimiento
-  inventoryTransactionProducts InventoryMovementProduct[]
+  // Campos de origen y destino
+  /// ID de la sucursal de origen. Puede ser nulo si el movimiento no involucra una sucursal.
+  originBranchId         String? @map("origin_branch_id") // ID de la sucursal de origen
+  /// ID del almacén de origen. Puede ser nulo si el movimiento no involucra un almacén.
+  originWarehouseId      String? @map("origin_warehouse_id") // ID del almacén de origen
+  destinationBranchId    String? @map("destination_branch_id") // ID de la sucursal de destino
+  destinationWarehouseId String? @map("destination_warehouse_id") // ID del almacén de destino
 
-  @@index([movementType]) // Índice para optimizar búsquedas por sucursal o almacén
+  // Relación con múltiples proveedores
+  suppliers InventoryMovementSupplier[]
+
+  // Relación con múltiples personas encargadas
+  deliveryManagers InventoryMovementDeliveryManager[]
+
+  // Relación con los productos afectados por el movimiento
+  // inventoryTransactionProducts InventoryMovementProduct[]
+  inventoryMovementDetails InventoryMovementDetail[]
+  // Relaciones con los tipos de movimientos
+  income                   Income? // Relación uno a uno con Income
+  outcome                  Outcome? // Relación uno a uno con Outcome
+  transfer                 Transfer? // Relación uno a uno con Transfer
+  adjustment               Adjustment? // Ya está bien definido como uno a uno
+
+  @@index([originBranchId]) // Índice para búsquedas rápidas por sucursal de origen
+  @@index([originWarehouseId]) // Índice para búsquedas rápidas por almacén de origen
+  @@index([destinationBranchId]) // Índice para búsquedas rápidas por sucursal de destino
+  @@index([destinationWarehouseId]) // Índice para búsquedas rápidas por almacén de destino
+  @@index([status]) // Índice para búsquedas rápidas por estado
+  @@index([createdAt]) // Índice para búsquedas rápidas por fecha de creación
+  @@index([deliveryDate]) // Índice para búsquedas rápidas por fecha de entrega
   @@map("inventory_movements")
 }
 
-/// Modelo de Stock en Sucursales
-model BranchStock {
-  id                          String                        @id @default(uuid())
-  originBranchId              String?                       @map("origin_branch_id") // ID de la sucursal
-  originWarehouseId           String?                       @map("origin_warehouse_id") // ID del almacén
-  branchId                    String?                       @map("branch_id") // ID de la sucursal
-  quantity                    Decimal                       @db.Decimal(10, 2) // Cantidad del producto en stock
-  updatedAt                   DateTime                      @updatedAt @map("updated_at")
-  inventoryMovementProduct InventoryMovementProduct[]
-
-  @@map("branch_stocks")
+/// Enum para clasificar los ajustes más comunes
+/// - `DAMAGE`: Ajuste por daños (inundación, incendio, etc.).
+/// - `LOSS`: Ajuste por pérdida (robo, extravío, etc.).
+/// - `AUDIT`: Ajuste por auditoría (corrección de inventario).
+/// - `EXCESS`: Ajuste por exceso de inventario.
+/// - `OTHER`: Otro tipo de ajuste no especificado.
+enum AdjustmentReason {
+  DAMAGE // Ajuste por daños (inundación, incendio, etc.)
+  LOSS // Ajuste por pérdida (robo, extravío, etc.)
+  AUDIT // Ajuste por auditoría (corrección de inventario)
+  EXCESS // Ajuste por exceso de inventario
+  OTHER // Otro tipo de ajuste no especificado
 }
 
-/// Modelo de Stock en Almacenes
-model WarehouseStock {
-  id                          String                        @id @default(uuid())
-  originWarehouseId           String?                       @map("origin_warehouse_id") // ID del almacén
-  originBranchId              String?                       @map("origin_branch_id") // ID de la sucursal
-  warehouseId                 String?                       @map("warehouse_id") // ID del almacén
-  quantity                    Decimal                       @db.Decimal(10, 2) // Cantidad del producto en stock
-  updatedAt                   DateTime                      @updatedAt @map("updated_at")
-  inventoryMovementProduct InventoryMovementProduct[]
+/// Tabla intermedia para la relación con proveedores
+model InventoryMovementSupplier {
+  id                  String @id @default(uuid())
+  inventoryMovementId String @map("inventory_movement_id")
+  supplierId          String @map("supplier_id") // ID del proveedor (microservicio externo)
 
-  @@map("warehouse_stocks")
-}
-
-/// Relación entre Transacciones de Inventario y Productos
-model InventoryMovementProduct {
-  id                     String  @id @default(uuid())
-  inventoryMovementId String  @map("inventory_movement_id") // ID del movimiento
-  productId              String  @map("product_id") // ID del producto
-  unit                   String  @db.VarChar(20) // Unidad de medida
-  branchStockId          String? @map("branch_stock_id") // Relación con BranchStock (si aplica)
-  warehouseStockId       String? @map("warehouse_stock_id") // Relación con WarehouseStock (si aplica)
-
-  // Relación con InventoryTransaction
+  // Relación con InventoryMovement
   inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
 
-  // Relación con BranchStock
-  branchStock BranchStock? @relation(fields: [branchStockId], references: [id])
+  @@map("inventory_movement_suppliers")
+}
 
-  // Relación con WarehouseStock
-  warehouseStock WarehouseStock? @relation(fields: [warehouseStockId], references: [id])
+/// Tabla intermedia para la relación con personas encargadas
+model InventoryMovementDeliveryManager {
+  id                  String @id @default(uuid())
+  inventoryMovementId String @map("inventory_movement_id")
+  deliveryManagerId   String @map("delivery_manager_id") // ID de la persona encargada (microservicio "person")
+
+  // Relación con InventoryMovement
+  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
+
+  @@map("inventory_movement_delivery_managers")
+}
+
+model InventoryMovementDetail {
+  id                  String @id @default(uuid())
+  inventoryMovementId String @map("inventory_movement_id") // ID del movimiento
+  productId           String @map("product_id") // ID del producto
+  unit                String @db.VarChar(20) // Unidad de medida
+
+  // Campos para seguimiento de entrega
+  expectedQuantity  Decimal @map("expected_quantity") @db.Decimal(10, 2) // Cantidad esperada del producto
+  deliveredQuantity Decimal @map("delivered_quantity") @db.Decimal(10, 2) // Cantidad que realmente llegó
+
+  /**
+   * Explicación:
+   * - quantity: Representa la cantidad total del producto que está involucrada en el movimiento.
+   * Ejemplo: Si se transfieren 100 unidades de un producto, este campo será 100.
+   * - expectedQuantity: Representa la cantidad que se espera recibir o entregar en el destino.
+   * Ejemplo: Si se esperan recibir 90 unidades debido a un margen de error, este campo será 90.
+   * - deliveredQuantity: Representa la cantidad que realmente llegó al destino.
+   * Ejemplo: Si solo llegaron 85 unidades, este campo será 85.
+   */
+
+  // Campos para auditoría
+  updatedAt DateTime @updatedAt @map("updated_at") // Última actualización
+
+  // Estado de la entrega
+  deliveryStatus    DeliveryStatus    @default(PENDING) @map("delivery_status") // Estado de la entrega
+  // Relación con InventoryMovement
+  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
 
   @@index([inventoryMovementId, productId]) // Optimiza búsquedas por transacción de inventario y producto
-  @@map("inventory_movement_products")
+  @@map("inventory_movement_details")
+}
+
+/// Enum para el estado de la entrega
+/// Este enum representa el estado de la entrega de un producto en un movimiento de inventario.
+/// - `PENDING`: La entrega aún no se ha realizado.
+/// - `COMPLETE`: La cantidad entregada coincide con la cantidad esperada (`deliveredQuantity` == `expectedQuantity`).
+/// - `PARTIAL`: Solo una parte de la cantidad esperada fue entregada (`deliveredQuantity` < `expectedQuantity` y > 0).
+/// - `NOT_DELIVERED`: No se entregó nada (`deliveredQuantity` == 0).
+/// - `OVER_DELIVERED`: Se entregó más de la cantidad esperada (`deliveredQuantity` > `expectedQuantity`).
+enum DeliveryStatus {
+  PENDING // Pendiente de entrega
+  COMPLETE // Entregado completamente
+  PARTIAL // Entregado parcialmente
+  NOT_DELIVERED // No entregado
+  OVER_DELIVERED // Entregado en exceso
 }

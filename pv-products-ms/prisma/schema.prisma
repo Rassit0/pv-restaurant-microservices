@@ -35,14 +35,14 @@ model Unit {
 }
 
 model Product {
-  id           String    @id @default(uuid()) // El identificador único del producto, generado como UUID
-  name         String    @unique @db.VarChar(100) // Nombre del producto, único en la base de datos
-  description  String? // Descripción del producto
-  slug         String    @unique
+  id          String  @id @default(uuid()) // El identificador único del producto, generado como UUID
+  name        String  @unique @db.VarChar(100) // Nombre del producto, único en la base de datos
+  description String? // Descripción del producto
+  slug        String  @unique
   // price          Decimal   @db.Decimal(10, 2) // Precio del producto, con precisión de 10 dígitos y 2 decimales
   // stock          Decimal     @db.Decimal(10, 2) // Cantidad total en stock del producto
-  imageUrl     String?   @map("image_url") // URL de la imagen del producto
-  isEnable     Boolean   @default(true) @map("is_enable") // Indica si el producto está habilitado o no
+  imageUrl    String? @map("image_url") // URL de la imagen del producto
+  isEnable    Boolean @default(true) @map("is_enable") // Indica si el producto está habilitado o no
 
   // Campos relacionados con inventario y logística
   minimumStock Decimal @map("minimun_stock") @db.Decimal(10, 2) // Stock mínimo recomendado antes de realizar un nuevo pedido o preparación
@@ -67,21 +67,39 @@ model Product {
   updatedByUserId String?   @map("updated_by_user_id") // ID del usuario que actualiza la receta
   deletedByUserId String?   @map("deleted_by_user_id")
 
-  types            TypeProduct[] // Relación con TypeProduct
-  suppliersProduct SupplierProduct[]
+  types          TypeProduct[] // Relación con TypeProduct
+  suppliers      ProductSupplier[] // Relación con proveedores empresariales
+  personSuppliers PersonSupplier[] // Relación con Proveedores personales
 
   @@map("products") // Mapea este modelo a la tabla 'products' en la base de datos
 }
 
-model SupplierProduct {
-  id          String @id @default(uuid()) // Clave primaria única
-  supplierId String @map("supplier_id") // ID del almacén (viene de otro microservicio)
-  productId   String @map("product_id") // ID del producto
+model ProductSupplier {
+  id         String @id @default(uuid()) // ID único de la relación
+  productId  String @map("product_id") // ID del producto
+  supplierId String @map("supplier_id") // ID del proveedor (de otro microservicio)
 
-  product Product @relation(fields: [productId], references: [id])
+  product Product @relation(fields: [productId], references: [id]) // Relación con el modelo Product
 
-  @@unique([supplierId, productId]) // Un almacén solo puede tener un producto único en la relación
-  @@map("supplier_products") // Nombre de la tabla en la base de datos
+  createdAt DateTime @default(now()) @map("created_at") // Fecha de creación
+  updatedAt DateTime @updatedAt @map("updated_at") // Fecha de última actualización
+
+  @@unique([productId, supplierId]) // Evita duplicados en la relación producto-proveedor
+  @@map("product_suppliers") // Mapea este modelo a la tabla 'product_suppliers' en la base de datos
+}
+
+model PersonSupplier {
+  id        String @id @default(uuid()) // ID único de la relación
+  productId String @map("product_id") // ID del producto
+  personId  String @map("person_id") // ID de la persona (de otro microservicio)
+
+  product Product @relation(fields: [productId], references: [id]) // Relación con el modelo Product
+
+  createdAt DateTime @default(now()) @map("created_at") // Fecha de creación
+  updatedAt DateTime @updatedAt @map("updated_at") // Fecha de última actualización
+
+  @@unique([productId, personId]) // Evita duplicados en la relación producto-persona
+  @@map("person_suppliers") // Mapea este modelo a la tabla 'person_suppliers' en la base de datos
 }
 
 model TypeProduct {
@@ -114,8 +132,8 @@ model Category {
 
 model CategoryHierarchy {
   id         String @id @default(uuid()) // Clave primaria generada por UUID
-  categoryId String @map("category_id")// Clave foránea hacia Category
-  parentId   String @map("parent_id")// Clave foránea hacia Category (padre)
+  categoryId String @map("category_id") // Clave foránea hacia Category
+  parentId   String @map("parent_id") // Clave foránea hacia Category (padre)
 
   category Category @relation("CategoryToParents", fields: [categoryId], references: [id]) // Relación con la categoría hija
   parent   Category @relation("CategoryToSubcategories", fields: [parentId], references: [id]) // Relación con la categoría padre
