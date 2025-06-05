@@ -3,7 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { MovementsService } from './movements.service';
 import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto';
 import { UpdateInventoryMovementDto } from './dto/update-inventory-movement.dto';
-import { ChangeStatusDto } from './dto/change-status-movement.dto';
+import { UpdateDetailsAndStatusDto } from './dto/change-status-movement.dto';
 import { MovementsPaginationDto } from './dto/movements-pagination';
 
 @Controller()
@@ -30,13 +30,18 @@ export class MovementsController {
   //   return this.inventoryService.update(updateInventoryDto.id, updateInventoryDto);
   // }
 
-  @MessagePattern('inventory.changeStatusMovement')
-  changeStatus(@Payload() changeStatusDto: ChangeStatusDto) {
-    return this.inventoryService.changeStatus(changeStatusDto.id, changeStatusDto);
+  @MessagePattern('inventory.updateDetailsAndStatusMovement')
+  changeStatus(@Payload() updateDetailsAndStatusDto: UpdateDetailsAndStatusDto) {
+    return this.inventoryService.updateDetailsAndStatus(updateDetailsAndStatusDto.id, updateDetailsAndStatusDto);
   }
 
   @MessagePattern('inventory.removeMovement')
   remove(@Payload() id: string) {
     return this.inventoryService.remove(id);
+  }
+
+  @MessagePattern('inventory.removeDetailSupplier')
+  removeDetailSupplier(@Payload() id: string) {
+    return this.inventoryService.removeDetailSupplier(id);
   }
 }

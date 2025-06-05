@@ -69,43 +69,55 @@ export class ProductsService {
         });
       }
 
-      if (branchProductStock) {
-        // Verificar si hay duplicados en branchProductStock
-        const branchIds = branchProductStock.map(inventory => inventory.branchId);
-
-        const uniqueBranchIds = new Set(branchIds); // Usamos un Set para filtrar duplicados
-
-        if (branchIds.length !== uniqueBranchIds.size) {
+      // Validar que no haya supplierId duplicados en suppliers
+      if (productData.suppliers) {
+        const supplierIds = productData.suppliers.map(s => s.supplierId);
+        const duplicates = supplierIds.filter((id, idx) => supplierIds.indexOf(id) !== idx);
+        if (duplicates.length > 0) {
           throw new RpcException({
-            message: "No se pueden agregar duplicados de branchId en el inventario por sucursal.",
-            statusCode: HttpStatus.BAD_REQUEST
+            message: `No puede enviar supplierId(s) duplicados en suppliers: ${[...new Set(duplicates)].join(', ')}`,
+            statusCode: HttpStatus.BAD_REQUEST,
           });
         }
-
-        // Enviar solicitud al servicio de sucursales para validar los branchIds
-        //   await firstValueFrom(
-        //     this.natsClient.send('branches.validateIds', branchIds).pipe(
-        //       catchError(error => {
-        //         console.error('Error capturado al enviar mensaje:', error);
-
-        //         // Si el error tiene message y statusCode, convertirlo en un RpcException
-        //         if (error?.message && error?.statusCode) {
-        //           throw new RpcException({
-        //             message: error.message,
-        //             statusCode: error.statusCode,
-        //           });
-        //         }
-
-        //         // Si no tiene estas propiedades, lanzar un RpcException genérico
-        //         throw new RpcException({
-        //           message: 'Error desconocido al comunicarse con el servicio de sucursales.',
-        //           statusCode: HttpStatus.INTERNAL_SERVER_ERROR, // Internal Server Error
-        //         });
-        //       })
-        //     )
-        //   );
-        await this.handleRpcError(this.natsClient.send('branches.validateIds', branchIds));
       }
+
+      // if (branchProductStock) {
+      //   // Verificar si hay duplicados en branchProductStock
+      //   const branchIds = branchProductStock.map(inventory => inventory.branchId);
+
+      //   const uniqueBranchIds = new Set(branchIds); // Usamos un Set para filtrar duplicados
+
+      //   if (branchIds.length !== uniqueBranchIds.size) {
+      //     throw new RpcException({
+      //       message: "No se pueden agregar duplicados de branchId en el inventario por sucursal.",
+      //       statusCode: HttpStatus.BAD_REQUEST
+      //     });
+      //   }
+
+      //   // Enviar solicitud al servicio de sucursales para validar los branchIds
+      //   //   await firstValueFrom(
+      //   //     this.natsClient.send('branches.validateIds', branchIds).pipe(
+      //   //       catchError(error => {
+      //   //         console.error('Error capturado al enviar mensaje:', error);
+
+      //   //         // Si el error tiene message y statusCode, convertirlo en un RpcException
+      //   //         if (error?.message && error?.statusCode) {
+      //   //           throw new RpcException({
+      //   //             message: error.message,
+      //   //             statusCode: error.statusCode,
+      //   //           });
+      //   //         }
+
+      //   //         // Si no tiene estas propiedades, lanzar un RpcException genérico
+      //   //         throw new RpcException({
+      //   //           message: 'Error desconocido al comunicarse con el servicio de sucursales.',
+      //   //           statusCode: HttpStatus.INTERNAL_SERVER_ERROR, // Internal Server Error
+      //   //         });
+      //   //       })
+      //   //     )
+      //   //   );
+      //   await this.handleRpcError(this.natsClient.send('branches.validateIds', branchIds));
+      // }
       // Crea un nuevo registro en la vase de datos con Prisma ORM
       const newRecord = await this.prisma.product.create({
         data: {
@@ -118,26 +130,44 @@ export class ProductsService {
               id: category.id
             }))
           },
-          // Crear stock por sucursal (si existe)       
-          branchProductStock: branchProductStock
-            ? {
-              create: branchProductStock
-            }
-            : undefined,
-          // Crear tock por almacén (si existe)       
-          warehouseProductStock: warehouseProductStock
-            ? {
-              create: warehouseProductStock
-            }
-            : undefined,
+          // // Crear stock por sucursal (si existe)       
+          // branchProductStock: branchProductStock
+          //   ? {
+          //     create: branchProductStock
+          //   }
+          //   : undefined,
+          // // Crear tock por almacén (si existe)       
+          // warehouseProductStock: warehouseProductStock
+          //   ? {
+          //     create: warehouseProductStock
+          //   }
+          //   : undefined,
           types: {
             create: typesProduct.map((type) => ({
               type: type
             }))
           },
+          ...(productData.suppliers && {
+            suppliers: {
+              create: productData.suppliers.map((supplier) => ({
+                supplierId: supplier.supplierId
+              }))
+            }
+          })
         },
         include: {
           categories: true,
+          types:{
+            select:{
+              id: true,
+              type: true,
+            }
+          },
+          suppliers:{
+            select:{
+              supplierId: true,
+            }
+          }
         }
       });
 
@@ -212,6 +242,11 @@ export class ProductsService {
           branchProductStock: true,
           warehouseProductStock: true,
           types: true,
+          suppliers: {
+            select:{
+              supplierId: true, // Selecciona solo el campo supplierId
+            }
+          },
         }
       });
 
@@ -481,16 +516,6 @@ export class ProductsService {
               }
             }
           }),
-          // ...(suppliersProduct && {
-          //   suppliersProduct: {
-          //     deleteMany: {
-          //       productId: id, // Elimina inventarios anteriores relacionados al producto
-          //     },
-          //     createMany: {
-          //       data: suppliersProduct
-          //     }
-          //   }
-          // }),
           ...(typesProduct && {
             types: {
               deleteMany: {
@@ -499,6 +524,18 @@ export class ProductsService {
               createMany: {
                 data: typesProduct.map((type) => ({
                   type
+                }))
+              }
+            }
+          }),
+          ...(updateProductDto.suppliers && {
+            suppliers: {
+              deleteMany: {
+                productId: id, // Elimina inventarios anteriores relacionados al producto
+              },
+              createMany: {
+                data: updateProductDto.suppliers.map((supplier) => ({
+                  supplierId: supplier.supplierId
                 }))
               }
             }

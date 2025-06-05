@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { IsArray, IsEnum, IsIn, IsOptional, IsPositive, IsString } from "class-validator";
+import { IsArray, IsBoolean, IsEnum, IsIn, IsOptional, IsPositive, IsString } from "class-validator";
 import { PaginationDto } from "src/common/dto/pagination.dto";
 
 // Opcional: Si deseas definir un conjunto de valores posibles para el `status`
@@ -24,11 +24,19 @@ export class SupplierPaginationDto extends PaginationDto {
     @IsString()
     @IsOptional()
     @IsIn(['name', 'address', 'createdAt'], { message: "La columna de ordenamiento (columnOrderBy) debe ser 'name', 'address' o 'createdAt'." })
-    columnOrderBy: 'name' | 'description' | 'createdAt' = 'name';
+    columnOrderBy: 'name' | 'type' | 'address' | 'city' | 'state' | 'country' | 'createdAt' = 'name';
 
     @IsOptional()
     @IsArray({ message: 'El campo "supplierIds" debe ser un arreglo.' })
     @IsString({ each: true, message: 'Cada elemento de "supplierIds" debe ser una cadena de texto.' })
     @Transform(({ value }) => (Array.isArray(value) ? value : [value])) // Asegura que siempre sea un arreglo
     supplierIds?: string[];
+
+    @IsOptional()
+    @IsBoolean({ message: 'El campo (eliminated) debe ser un valor boolean.' })
+    deleted: boolean = false;
+
+    @IsString()
+    @IsOptional()
+    searchName?: string | undefined;
 }

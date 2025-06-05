@@ -38,4 +38,9 @@ export class SuppliersController {
   removeContact(@Payload() id: number) {
     return this.suppliersService.removeContact(id);
   }
+
+  @MessagePattern('suppliers.validateIds')
+  validateBranchesIds(@Payload() ids: string[]) {
+    return this.suppliersService.validateSuppliersIds(ids);
+  }
 }

@@ -66,10 +66,10 @@ export class MovementsController {
 
   @UseGuards(ModulePermissionAccessGuard)
   @ModulePermissionsGuard(['EDIT'])
-  @Patch('changeStatus/:id')
-  changeStatus(@Param('id') id: string, @Body() changeStatusDto: any, @Req() req: Request) {
+  @Patch('updateDetailsAndStatus/:id')
+  changeStatus(@Param('id') id: string, @Body() updateDetailsAndStatusDto: any, @Req() req: Request) {
     const userId = req['user'].id; // Obtener el ID del usuario desde el guard
-    return this.client.send("inventory.changeStatusMovement", { id, ...changeStatusDto, updatedByUserId: userId })
+    return this.client.send("inventory.updateDetailsAndStatusMovement", { id, ...updateDetailsAndStatusDto, updatedByUserId: userId })
       .pipe(
         catchError(error => {
           throw new RpcException(error);
@@ -82,6 +82,18 @@ export class MovementsController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.client.send("inventory.removeMovement", id)
+      .pipe(
+        catchError(error => {
+          throw new RpcException(error)
+        })
+      )
+  }
+
+  @UseGuards(ModulePermissionAccessGuard)
+  @ModulePermissionsGuard(['DELETE'])
+  @Delete(':id')
+  removeDetailSupplier(@Param('id') id: string) {
+    return this.client.send("inventory.removeDetailSupplier", id)
       .pipe(
         catchError(error => {
           throw new RpcException(error)

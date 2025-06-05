@@ -69,7 +69,6 @@ model Product {
 
   types          TypeProduct[] // Relación con TypeProduct
   suppliers      ProductSupplier[] // Relación con proveedores empresariales
-  personSuppliers PersonSupplier[] // Relación con Proveedores personales
 
   @@map("products") // Mapea este modelo a la tabla 'products' en la base de datos
 }
@@ -86,20 +85,6 @@ model ProductSupplier {
 
   @@unique([productId, supplierId]) // Evita duplicados en la relación producto-proveedor
   @@map("product_suppliers") // Mapea este modelo a la tabla 'product_suppliers' en la base de datos
-}
-
-model PersonSupplier {
-  id        String @id @default(uuid()) // ID único de la relación
-  productId String @map("product_id") // ID del producto
-  personId  String @map("person_id") // ID de la persona (de otro microservicio)
-
-  product Product @relation(fields: [productId], references: [id]) // Relación con el modelo Product
-
-  createdAt DateTime @default(now()) @map("created_at") // Fecha de creación
-  updatedAt DateTime @updatedAt @map("updated_at") // Fecha de última actualización
-
-  @@unique([productId, personId]) // Evita duplicados en la relación producto-persona
-  @@map("person_suppliers") // Mapea este modelo a la tabla 'person_suppliers' en la base de datos
 }
 
 model TypeProduct {

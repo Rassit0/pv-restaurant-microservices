@@ -84,12 +84,6 @@ model InventoryMovement {
   destinationBranchId    String? @map("destination_branch_id") // ID de la sucursal de destino
   destinationWarehouseId String? @map("destination_warehouse_id") // ID del almacén de destino
 
-  // Relación con múltiples proveedores
-  suppliers InventoryMovementSupplier[]
-
-  // Relación con múltiples personas encargadas
-  deliveryManagers InventoryMovementDeliveryManager[]
-
   // Relación con los productos afectados por el movimiento
   // inventoryTransactionProducts InventoryMovementProduct[]
   inventoryMovementDetails InventoryMovementDetail[]
@@ -123,39 +117,17 @@ enum AdjustmentReason {
   OTHER // Otro tipo de ajuste no especificado
 }
 
-/// Tabla intermedia para la relación con proveedores
-model InventoryMovementSupplier {
-  id                  String @id @default(uuid())
-  inventoryMovementId String @map("inventory_movement_id")
-  supplierId          String @map("supplier_id") // ID del proveedor (microservicio externo)
-
-  // Relación con InventoryMovement
-  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
-
-  @@map("inventory_movement_suppliers")
-}
-
-/// Tabla intermedia para la relación con personas encargadas
-model InventoryMovementDeliveryManager {
-  id                  String @id @default(uuid())
-  inventoryMovementId String @map("inventory_movement_id")
-  deliveryManagerId   String @map("delivery_manager_id") // ID de la persona encargada (microservicio "person")
-
-  // Relación con InventoryMovement
-  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
-
-  @@map("inventory_movement_delivery_managers")
-}
-
 model InventoryMovementDetail {
-  id                  String @id @default(uuid())
-  inventoryMovementId String @map("inventory_movement_id") // ID del movimiento
-  productId           String @map("product_id") // ID del producto
-  unit                String @db.VarChar(20) // Unidad de medida
+  id                  String            @id @default(uuid())
+  // Relación con InventoryMovement
+  inventoryMovementId String            @map("inventory_movement_id") // ID del movimiento
+  inventoryMovement   InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
+  productId           String            @map("product_id") // ID del producto
+  unit                String            @db.VarChar(20) // Unidad de medida
 
   // Campos para seguimiento de entrega
-  expectedQuantity  Decimal @map("expected_quantity") @db.Decimal(10, 2) // Cantidad esperada del producto
-  deliveredQuantity Decimal @map("delivered_quantity") @db.Decimal(10, 2) // Cantidad que realmente llegó
+  totalExpectedQuantity  Decimal  @map("total_expected_quantity") @db.Decimal(10, 2) // Cantidad esperada del producto
+  totalDeliveredQuantity Decimal? @map("total_delivered_quantity") @db.Decimal(10, 2) // Cantidad que realmente llegó
 
   /**
    * Explicación:
@@ -171,12 +143,46 @@ model InventoryMovementDetail {
   updatedAt DateTime @updatedAt @map("updated_at") // Última actualización
 
   // Estado de la entrega
-  deliveryStatus    DeliveryStatus    @default(PENDING) @map("delivery_status") // Estado de la entrega
-  // Relación con InventoryMovement
-  inventoryMovement InventoryMovement @relation(fields: [inventoryMovementId], references: [id])
+  deliveryStatus  DeliveryStatus                    @default(PENDING) @map("delivery_status") // Estado de la entrega
+  detailSuppliers InventoryMovementDetailSupplier[]
 
   @@index([inventoryMovementId, productId]) // Optimiza búsquedas por transacción de inventario y producto
   @@map("inventory_movement_details")
+}
+
+model InventoryMovementDetailSupplier {
+  id String @id @default(uuid())
+
+  // FK al detalle de movimiento
+  inventoryMovementDetailId String @map("inventory_movement_detail_id")
+
+  // FK al microservicio/tabla externa de proveedores
+  supplierId String @map("supplier_id")
+
+  /// Cantidad que se esperaba recibir de este proveedor
+  // expectedQuantity  Decimal  @map("expected_quantity") @db.Decimal(10, 2)
+  /// Cantidad que efectivamente se recibió
+  deliveredQuantity Decimal? @map("delivered_quantity") @db.Decimal(10, 2)
+
+  
+  // Campos para auditoría
+  createdByUserId String   @map("created_by_user_id") // Usuario que realizó el movimiento
+  updatedByUserId String?  @map("updated_by_user_id") // Usuario que realizó el movimiento
+  deletedByUserId String?  @map("deleted_by_user_id") // Usuario que realizó el movimiento
+  createdAt       DateTime @default(now()) @map("created_at") // Fecha de creación
+  updatedAt       DateTime @updatedAt @map("updated_at") // Última actualización
+  deletedAt       DateTime? @map("deleted_at") // Fecha de eliminación
+
+  /// Estado de entrega para este proveedor
+  // deliveryStatus DeliveryStatus @default(PENDING) @map("delivery_status")
+
+  inventoryMovementDetail InventoryMovementDetail @relation(fields: [inventoryMovementDetailId], references: [id])
+
+  @@unique([inventoryMovementDetailId, supplierId], map: "imd_supplier_unique") // evita duplicados
+  // ──────────────────────────
+  // Índices y mapeo de tabla
+  @@index([supplierId])
+  @@map("inventory_movement_detail_suppliers")
 }
 
 /// Enum para el estado de la entrega
