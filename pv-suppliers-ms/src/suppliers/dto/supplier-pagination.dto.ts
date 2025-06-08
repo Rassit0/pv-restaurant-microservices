@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { IsArray, IsBoolean, IsEnum, IsIn, IsOptional, IsPositive, IsString } from "class-validator";
+import { IsArray, IsBoolean, IsEnum, IsIn, IsOptional, IsPositive, IsString, IsUUID } from "class-validator";
 import { PaginationDto } from "src/common/dto/pagination.dto";
 
 // Opcional: Si deseas definir un conjunto de valores posibles para el `status`
@@ -39,4 +39,8 @@ export class SupplierPaginationDto extends PaginationDto {
     @IsString()
     @IsOptional()
     searchName?: string | undefined;
+
+    @IsOptional()
+    @IsUUID("all", { message: 'El campo (productId) debe ser un UUID válido.' })
+    filterSuppliersByProductId?: string;
 }

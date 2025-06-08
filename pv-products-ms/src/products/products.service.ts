@@ -53,6 +53,7 @@ export class ProductsService {
         warehouseProductStock,
         typesProduct,
         userId,
+        suppliers,
         ...productData // El resto de las propiedades se asignan a productData
       } = createProductDto;
 
@@ -70,8 +71,8 @@ export class ProductsService {
       }
 
       // Validar que no haya supplierId duplicados en suppliers
-      if (productData.suppliers) {
-        const supplierIds = productData.suppliers.map(s => s.supplierId);
+      if (suppliers) {
+        const supplierIds = suppliers.map(s => s.supplierId);
         const duplicates = supplierIds.filter((id, idx) => supplierIds.indexOf(id) !== idx);
         if (duplicates.length > 0) {
           throw new RpcException({
@@ -147,9 +148,9 @@ export class ProductsService {
               type: type
             }))
           },
-          ...(productData.suppliers && {
+          ...(suppliers && {
             suppliers: {
-              create: productData.suppliers.map((supplier) => ({
+              create: suppliers.map((supplier) => ({
                 supplierId: supplier.supplierId
               }))
             }
@@ -157,14 +158,14 @@ export class ProductsService {
         },
         include: {
           categories: true,
-          types:{
-            select:{
+          types: {
+            select: {
               id: true,
               type: true,
             }
           },
-          suppliers:{
-            select:{
+          suppliers: {
+            select: {
               supplierId: true,
             }
           }
@@ -243,7 +244,7 @@ export class ProductsService {
           warehouseProductStock: true,
           types: true,
           suppliers: {
-            select:{
+            select: {
               supplierId: true, // Selecciona solo el campo supplierId
             }
           },
@@ -367,6 +368,11 @@ export class ProductsService {
         branchProductStock: true,
         warehouseProductStock: true,
         types: true,
+        suppliers: {
+          select: {
+            supplierId: true, // Selecciona solo el campo supplierId
+          }
+        }
       }
     });
 
@@ -451,7 +457,7 @@ export class ProductsService {
           },
         });
 
-        if (duplicateProduct === null) {
+        if (duplicateProduct) {
           throw new RpcException({
             message: "El nombre del producto ya está en uso",
             statusCode: HttpStatus.BAD_REQUEST, // Envia el código 400
@@ -467,6 +473,7 @@ export class ProductsService {
         unitId,
         typesProduct,
         userId,
+        suppliers,
         ...productData // El resto de las propiedades se asignan a productData
       } = updateProductDto;
 
@@ -485,6 +492,18 @@ export class ProductsService {
 
         // Enviar solicitud al servicio de sucursales para validar los branchIds
         await this.handleRpcError(this.natsClient.send('branches.validateIds', branchIds));
+      }
+
+      // Validar que no haya supplierId duplicados en suppliers
+      if (suppliers) {
+        const supplierIds = suppliers.map(s => s.supplierId);
+        const duplicates = supplierIds.filter((id, idx) => supplierIds.indexOf(id) !== idx);
+        if (duplicates.length > 0) {
+          throw new RpcException({
+            message: `No puede enviar supplierId(s) duplicados en suppliers: ${[...new Set(duplicates)].join(', ')}`,
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
+        }
       }
 
       const updatedData = {
@@ -528,13 +547,13 @@ export class ProductsService {
               }
             }
           }),
-          ...(updateProductDto.suppliers && {
+          ...(suppliers && {
             suppliers: {
               deleteMany: {
                 productId: id, // Elimina inventarios anteriores relacionados al producto
               },
               createMany: {
-                data: updateProductDto.suppliers.map((supplier) => ({
+                data: suppliers.map((supplier) => ({
                   supplierId: supplier.supplierId
                 }))
               }
@@ -671,35 +690,6 @@ export class ProductsService {
     }
   }
 
-  // async updateOrCreateStockWarehouse(stockUpdates: { productId: string, warehouseId: string, quantity: number }[]) {
-  //   try {
-  //     const updatePromises = stockUpdates.map(async ({ productId, warehouseId, quantity }) => {
-  //       return this.prisma.warehouseProductStock.upsert({
-  //         where: {
-  //           productId_warehouseId: { productId, warehouseId } // Usa una clave compuesta si existe
-  //         },
-  //         update: {
-  //           stock: { increment: quantity } // Suma al stock existente
-  //         },
-  //         create: {
-  //           productId,
-  //           warehouseId,
-  //           stock: quantity // Crea un nuevo registro con la cantidad inicial
-  //         }
-  //       });
-  //     });
-
-  //     const results = await Promise.all(updatePromises);
-  //     return results;
-  //   } catch (error) {
-  //     console.error('Error en updateOrCreateStockWarehouse:', error);
-  //     throw new RpcException({
-  //       message: 'Error al actualizar o crear el stock en almacenes.',
-  //       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-  //     });
-  //   }
-  // }
-
   async updateOrCreateStock(stockUpdates: { productId: string, branchOrWarehouse: 'BRANCH' | 'WAREHOUSE', updateId: string, quantity: number }[]) {
     try {
       const updatePromises = stockUpdates.map(async ({ productId, updateId, quantity, branchOrWarehouse }) => {
@@ -774,36 +764,6 @@ export class ProductsService {
       });
     }
   }
-
-  // async updateOrCreateStockBranch(stockUpdates: { productId: string, branchId: string, quantity: number }[]) {
-  //   try {
-  //     const updatePromises = stockUpdates.map(async ({ productId, branchId, quantity }) => {
-  //       return this.prisma.branchProductStock.upsert({
-  //         where: {
-  //           productId_branchId: { productId, branchId } // Usa una clave compuesta si existe
-  //         },
-  //         update: {
-  //           stock: { increment: quantity } // Suma al stock existente
-  //         },
-  //         create: {
-  //           productId,
-  //           branchId,
-  //           stock: quantity // Crea un nuevo registro con la cantidad inicial
-  //         }
-  //       });
-  //     });
-
-  //     const results = await Promise.all(updatePromises);
-  //     return results;
-  //   } catch (error) {
-  //     console.error('Error en updateOrCreateStockWarehouse:', error);
-  //     throw new RpcException({
-  //       message: 'Error al actualizar o crear el stock en almacenes.',
-  //       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-  //     });
-  //   }
-  // }
-
 
   async getProductsByIds(ids: string[]) {
     try {
@@ -974,6 +934,73 @@ export class ProductsService {
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       });
     }
+  }
+
+  async validateSupplierIds({ productId, supplierIds }: { productId: string, supplierIds: string[] }) {
+    // Eliminar duplicados y vacíos
+    supplierIds = Array.from(new Set(supplierIds.filter(Boolean)));
+
+    // Buscar el producto y sus suppliers asociados
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        suppliers: {
+          select: { supplierId: true }
+        }
+      }
+    });
+
+    if (!product) {
+      throw new RpcException({
+        message: `El producto ${productId} no existe.`,
+        statusCode: HttpStatus.NOT_FOUND,
+      });
+    }
+
+    const associatedSupplierIds = product.suppliers.map(s => s.supplierId);
+
+    // Filtrar los supplierIds que no están asociados al producto
+    const missingIds = supplierIds.filter(id => !associatedSupplierIds.includes(id));
+
+    if (missingIds.length > 0) {
+      throw new RpcException({
+        message: `Los siguientes proveedores no están relacionados con el producto ${productId}: ${missingIds.join(', ')}`,
+        statusCode: HttpStatus.BAD_REQUEST,
+      });
+    }
+  }
+
+  async getSupplierIdsByProduct(term: string) {
+    // Validar proveedores existentes
+    const productExists = await this.prisma.product.findFirst({
+      where: {
+        OR: [
+          { id: term },
+          { slug: term }
+        ]
+      },
+      include: {
+        suppliers: {
+          select: {
+            supplierId: true, // Selecciona solo el campo supplierId
+          }
+        }
+      }
+    });
+
+    // Verificar que se encontraron todas
+    if (!productExists) {
+      throw new RpcException({
+        message: `El producto ${term} no existe.`,
+        statusCode: HttpStatus.NOT_FOUND,
+      });
+    }
+
+
+    return {
+      term,
+      supplierIds: productExists.suppliers.map(supplier => supplier.supplierId),
+    };
   }
 
 }

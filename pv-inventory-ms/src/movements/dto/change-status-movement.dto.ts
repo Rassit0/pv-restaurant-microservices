@@ -1,6 +1,6 @@
 import { StatusInventoryMovement } from "@prisma/client";
 import { Type } from "class-transformer";
-import { ArrayNotEmpty, IsArray, IsDecimal, IsDefined, IsEnum, IsNotEmpty, IsOptional, IsUUID, Validate, ValidateIf, ValidateNested } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsDecimal, IsDefined, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, Validate, ValidateIf, ValidateNested } from "class-validator";
 import { ValidateIfCondition } from "src/common/validators/ValidateIfCondition";
 import { IsRequiredIf } from "../../common/validators/IsRequiredIf";
 
@@ -98,6 +98,7 @@ class DetailSupplierDto {
 
     @ValidateIf((o) => o.id === undefined, { message: 'El ID del proveedor (supplierId) es obligatorio si el ID del detalle no está definido.' })
     @IsUUID()
+    @IsString({ message: 'El ID del encargado de entrega (supplierId) debe ser un UUID válido.' })
     @IsNotEmpty({ message: 'El ID del encargado de entrega (supplierId) es obligatorio.' })
     supplierId?: string;
 

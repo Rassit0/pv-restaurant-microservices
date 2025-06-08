@@ -41,10 +41,14 @@ export class CreateInventoryMovementDto {
     @Type(() => AdjustmentDto)
     adjustment?: AdjustmentDto;
 
-    @IsRequiredIf(
-        (o) => o.movementType === InventoryMovementType.ADJUSTMENT,
-        { message: 'El campo (description) es obligatorio cuando el tipo de movimiento es ADJUSTMENT.' }
-    )
+    // @IsRequiredIf(
+    //     (o) => o.movementType === InventoryMovementType.ADJUSTMENT,
+    //     { message: 'El campo (description) es obligatorio cuando el tipo de movimiento es ADJUSTMENT.' }
+    // )
+    // @ValidateIf((o) => o.movementType !== InventoryMovementType.ADJUSTMENT, {
+    //     message: 'El campo (description) no debe estar presente si el tipo de movimiento no es ADJUSTMENT.',
+    // })
+    @ValidateIf((o) => o.movementType === InventoryMovementType.ADJUSTMENT)
     @IsDefined({ message: 'El campo (description) es obligatorio.' })
     // @IsOptional()
     @IsString({ message: 'La descripción debe ser un valor de tipo texto.' })

@@ -82,4 +82,16 @@ export class ProductsController {
         })
       )
   }
+
+  @UseGuards(ModulePermissionAccessGuard)
+  @ModulePermissionsGuard(['READ'])
+  @Get('/getSupplierIdsByProduct/:term')
+  getSupplierIdsByProduct(@Param('term') term: string) {
+    return this.client.send("products.getSupplierIdsByProduct", term)
+      .pipe(
+        catchError(error => {
+          throw new RpcException(error)
+        })
+      )
+  }
 }

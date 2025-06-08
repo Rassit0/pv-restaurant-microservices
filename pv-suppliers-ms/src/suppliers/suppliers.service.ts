@@ -180,13 +180,57 @@ export class SuppliersService {
 
   async findAll(paginationDto: SupplierPaginationDto) {
     try {
-      const { limit, page, search, orderBy, columnOrderBy, supplierIds, status, deleted, searchName } = paginationDto;
+      const { limit, page, search, orderBy, columnOrderBy, status, deleted, searchName, filterSuppliersByProductId, supplierIds } = paginationDto;
+
+      // Obtener los supplierIds si llega filterSuppliersByProductId
+      const supplierIdsByProduct = filterSuppliersByProductId ? await firstValueFrom(
+        this.natsClient.send('products.getSupplierIdsByProduct', filterSuppliersByProductId).pipe(
+          catchError((error) => {
+            if (error.message && error.statusCode) {
+              // Solo volvemos a lanzar el RpcException capturado
+              throw new RpcException({
+                message: error.message,
+                statusCode: error.statusCode,
+              });
+            } else {
+              console.error('Error fetching findOne:', error);
+              throw new RpcException({
+                message: 'Error al obtener el supplierIds por producto',
+                statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+              })
+            }
+            return of(null);
+          })
+        )
+      ) : null;
+
       // Calcular el offset para la paginación
       const skip = limit ? (page - 1) * limit : undefined;
 
+      // Combinar supplierIds del DTO y los supplierIdsByProduct
+      let filteredSupplierIds: string[] | null = null;
+      if (supplierIdsByProduct && supplierIds?.length > 0) {
+        // Intersección
+        filteredSupplierIds = supplierIds.filter((id) => supplierIdsByProduct.supplierIds.includes(id));
+        if (filteredSupplierIds.length === 0) {
+          // IDs enviados que no están asociados al producto
+          const notAssociated = supplierIds.filter(id => !supplierIdsByProduct.supplierIds.includes(id));
+          throw new RpcException({
+            message: `Los siguientes supplierIds no están asociados al producto: ${notAssociated.join(', ')}`,
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
+        }
+      } else if (supplierIdsByProduct) {
+        filteredSupplierIds = supplierIdsByProduct.supplierIds;
+      } else if (supplierIds?.length > 0) {
+        filteredSupplierIds = supplierIds;
+      }
+
       // Construcción del filtro WHERE reutilizable
       const baseWhere = {
-        ...(supplierIds && supplierIds.length > 0 ? { id: { in: supplierIds } } : {}),
+        ...(filteredSupplierIds && Array.isArray(filteredSupplierIds) && filteredSupplierIds.length > 0
+          ? { id: { in: filteredSupplierIds } }
+          : {}),
 
         ...(searchName
           ? {
@@ -264,9 +308,10 @@ export class SuppliersService {
         }
       };
     } catch (error) {
-      console.log('Error al obtener la lista de personas:', error);
+      if (error instanceof RpcException) throw error;
+      console.log('Error al obtener la lista de proveedores:', error);
       throw new RpcException({
-        message: 'Error al obtener la lista de personas.',
+        message: 'Error al obtener la lista de proveedores.',
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       })
     }
@@ -324,7 +369,7 @@ export class SuppliersService {
 
         if (existingSupplierIndividual) {
           throw new RpcException({
-            message: 'El proveedor individual (personId) ya está registrado.',
+            message: 'El proveedor individual ya está registrado.',
             statusCode: HttpStatus.BAD_REQUEST,
           });
         }

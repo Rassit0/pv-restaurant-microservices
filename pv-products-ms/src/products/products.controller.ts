@@ -82,4 +82,14 @@ export class ProductsController {
   getLowStockProducts() {
     return this.productsService.getLowStockProducts();
   }
+
+  @MessagePattern('products.validateSupplierIds')
+  validateSupplierIds(@Payload() { productId, supplierIds }: { productId: string, supplierIds: string[] }) {
+    return this.productsService.validateSupplierIds({ productId, supplierIds });
+  }
+
+  @MessagePattern('products.getSupplierIdsByProduct')
+  getSupplierIdsByProduct(@Payload() term: string) {
+    return this.productsService.getSupplierIdsByProduct(term);
+  }
 }
