@@ -1,0 +1,52 @@
+# Crear un sistema operativo con node ya instalado
+# ==== COPIA DE DEPENDENCIAS ====
+FROM node:21-alpine3.20 AS deps
+
+WORKDIR /usr/src/app
+
+COPY package.json ./
+COPY package-lock.json ./
+
+RUN npm install
+
+
+# ==== CONSTRUCCION DE LA APLICACION ====
+FROM node:21-alpine3.20 AS build
+
+WORKDIR /usr/src/app
+
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+COPY --from=deps /usr/src/app/package*.json ./
+
+COPY . .
+
+# RUN npx prisma generate
+
+RUN npm run build
+
+# Esto solo mantiene las dependencias de producción, y hace q sea el proyecto mas ligero
+RUN npm ci -f --only=production && npm cache clean --force
+
+
+
+# ==== CREACION DE LA IMAGEN FINAL ====
+FROM node:21-alpine3.20 AS prod
+
+WORKDIR /usr/src/app
+
+COPY --from=build /usr/src/app/node_modules ./node_modules
+# COPY --from=build /usr/src/app/prisma ./prisma
+COPY --from=build /usr/src/app/package*.json ./
+COPY --from=build /usr/src/app/dist ./dist
+
+# ✅ Crear carpeta y dar permisos
+RUN mkdir -p uploads/compress && chown -R node:node uploads
+
+ENV NODE_ENV=production
+
+# Para protecicon de archivos con este usuario
+USER node
+
+EXPOSE 3009
+
+# CMD ["node", "dist/main.js"]

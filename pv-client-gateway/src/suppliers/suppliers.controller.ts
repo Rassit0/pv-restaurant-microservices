@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, UseGuards, Query, HttpStatus } from '@nestjs/common';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { NATS_SERVICE } from 'src/config';
@@ -9,6 +9,7 @@ import { ModuleAccessGuard } from 'src/auth-ms/auth/guards/auth.module.access.gu
 import { ModuleGuard } from 'src/auth-ms/auth/decorators/module.access';
 import { ModulePermissionAccessGuard } from 'src/auth-ms/auth/guards/auth.module.permission.guard';
 import { ModulePermissionsGuard } from 'src/auth-ms/auth/decorators/module.permission';
+import { FindByIdsDto } from './dto/findByIds.dto';
 
 @UseGuards(AuthGuard, ModuleAccessGuard)
 @ModuleGuard('SUPPLIERS')
@@ -35,6 +36,13 @@ export class SuppliersController {
   @ModulePermissionsGuard(['READ'])
   @Get()
   findAll(@Query() paginationDto: any) {
+    if (paginationDto.supplierIds) {
+      throw new RpcException({
+        message: `El parámetro "supplierIds" no está permitido en esta ruta. Usa el endpoint POST /suppliers/by-ids para obtener productos por ID.`,
+        statusCode: HttpStatus.BAD_REQUEST,
+      });
+    }
+
     return this.natsClient.send("findAllSuppliers", paginationDto)
       .pipe(
         catchError(error => {
@@ -42,6 +50,19 @@ export class SuppliersController {
           throw new RpcException(error)
         })
       );
+  }
+
+  @UseGuards(ModulePermissionAccessGuard)
+  @ModulePermissionsGuard(['READ'])
+  @Post('by-ids')
+  findByIds(@Query() paginationDto: any, @Body() findByIdsDto: FindByIdsDto) {
+    return this.natsClient.send("findAllSuppliers", { ...paginationDto, supplierIds: findByIdsDto.supplierIds })
+      .pipe(
+        catchError(error => {
+          console.log(error)
+          throw new RpcException(error)
+        })
+      )
   }
 
   @UseGuards(ModulePermissionAccessGuard)

@@ -7,6 +7,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { slugify } from 'src/common/helpers/slugify';
 import { RecipesPaginationDto } from './dto/recipes-pagination';
+import { CountRecipesDto } from './dto/count-orders.dto';
 
 @Injectable()
 export class RecipesService {
@@ -61,7 +62,7 @@ export class RecipesService {
           });
         }
 
-        // Enviar solicitud al microservicio branches para valdiar los productIds
+        // Enviar solicitud al microservicio products para valdiar los productIds
         await firstValueFrom(
           this.natsClient.send('products.validateIds', productIds).pipe(
             catchError(error => {
@@ -165,11 +166,11 @@ export class RecipesService {
         },
         include: {
           items: true,
-          ProductionDetail: {
-            include: {
-              productionOrder: true
-            }
-          }
+          // ProductionDetail: {
+          //   include: {
+          //     productionOrder: true
+          //   }
+          // }
         },
       });
 
@@ -497,6 +498,109 @@ export class RecipesService {
         message: 'Error al eliminar la receta.',
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       });
+    }
+  }
+
+  async getProductIdsFromRecipe(term: string): Promise<string[]> {
+    try {
+      const recipe = await this.prisma.recipe.findFirst({
+        where: {
+          OR: [
+            { id: term },
+            { slug: term }
+          ]
+        },
+        include: {
+          items: true
+        }
+      })
+      if (!recipe) {
+        throw new RpcException({
+          message: 'Receta no encontrada.',
+          statusCode: HttpStatus.NOT_FOUND,
+        });
+      }
+      const productIds = recipe.items.map(item => item.productId);
+      return productIds;
+    } catch (error) {
+      if (error instanceof RpcException) throw error;
+      console.log(error);
+      throw new RpcException({
+        message: 'Error al obtener la receta.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  async countRecipes(dto: CountRecipesDto) {
+    const { status, createdDate, createdMonth, createdYear, createdStartDate, createdEndDate } = dto;
+    try {
+
+      const where: any = {};
+
+      if (status && status !== 'all') where.isEnable = status === 'active' ? true : false;
+
+      // 1. Filtro por día exacto
+      if (createdDate) {
+        const startOfDay = new Date(createdDate);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date(createdDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        where.createdAt = {
+          gte: startOfDay,
+          lte: endOfDay,
+        };
+      }
+
+      // 2. Filtro por mes y año
+      else if (createdMonth) {
+        const selectedYear = createdYear || new Date().getFullYear();
+        const startOfMonth = new Date(selectedYear, createdMonth - 1, 1, 0, 0, 0, 0);
+        const endOfMonth = new Date(selectedYear, createdMonth, 0, 23, 59, 59, 999);
+
+        where.createdAt = {
+          gte: startOfMonth,
+          lte: endOfMonth,
+        };
+      }
+
+      // 3. Filtro por intervalo de fechas
+      else if (createdStartDate && createdEndDate) {
+        const start = new Date(createdStartDate);
+        const end = new Date(createdEndDate);
+        end.setHours(23, 59, 59, 999);
+
+        where.createdAt = {
+          gte: start,
+          lte: end,
+        };
+      }
+
+      // 4. Filtro por año (solo si no se usó nada más)
+      else if (createdYear) {
+        const startOfYear = new Date(createdYear, 0, 1, 0, 0, 0, 0);
+        const endOfYear = new Date(createdYear + 1, 0, 1, 0, 0, 0, 0);
+
+        where.createdAt = {
+          gte: startOfYear,
+          lt: endOfYear,
+        };
+      }
+
+      const totalItems = await this.prisma.recipe.count({ where });
+
+      return {
+        totalItems,
+      };
+    } catch (error) {
+      if (error instanceof RpcException) throw error;
+      console.log('Error al obtener la lista de recetas:', error);
+      throw new RpcException({
+        message: 'Error al obtener la lista de Recetas.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      })
     }
   }
 

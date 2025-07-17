@@ -12,9 +12,9 @@ export class ProductionPaginationDto extends PaginationDto {
     status?: ProductionOrderStatus | 'all';
 
     @IsOptional()
-    @IsString({ message: "El parámetro 'branchId' debe ser una cadena de texto válida." })
+    @IsString({ message: "El parámetro 'originBranchId' debe ser una cadena de texto válida." })
     // @IsNotEmpty({ message: "El parámetro 'branchId' es obligatorio y no puede estar vacío." })
-    branchId?: string;
+    originBranchId?: string;
 
     @IsString()
     @IsOptional()
@@ -28,5 +28,5 @@ export class ProductionPaginationDto extends PaginationDto {
 
     @IsOptional()
     @IsISO8601DateString({ message: "La fecha de ingreso(entryDate) debe ser una fecha válida en formato ISO 8601 (ejemplo: '2025-01-01T00:00:00.000Z')." })
-    date?: string;
+    deliveryDate?: string;
 }

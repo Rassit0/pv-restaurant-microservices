@@ -3,6 +3,7 @@ import { Type } from "class-transformer";
 import { ArrayNotEmpty, IsArray, IsDecimal, IsDefined, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, Validate, ValidateIf, ValidateNested } from "class-validator";
 import { ValidateIfCondition } from "src/common/validators/ValidateIfCondition";
 import { IsRequiredIf } from "../../common/validators/IsRequiredIf";
+import { IsISO8601DateString } from "src/common/validators";
 
 enum DeliveryStatusDetail {
     // PENDING // Pendiente de entrega
@@ -18,7 +19,7 @@ export class UpdateDetailsAndStatusDto {
 
     @IsUUID()
     @IsNotEmpty({ message: 'El ID del usuario que actualizó el movimiento es obligatorio.' })
-    updatedByUserId?: string;
+    updatedByUserId: string;
 
     // @ValidateIfCondition(
     //     (o) =>
@@ -32,9 +33,9 @@ export class UpdateDetailsAndStatusDto {
     // @IsOptional()
     // @ValidateIf((o) => o.status === StatusInventoryMovement.COMPLETED)
     @IsRequiredIf(
-            (o) => o.status === StatusInventoryMovement.COMPLETED,
-            { message: 'El campo (inventoryMovementDetails) es obligatorio cuando el tipo de movimiento es COMPLETED.' }
-        )
+        (o) => o.status === StatusInventoryMovement.COMPLETED,
+        { message: 'El campo (inventoryMovementDetails) es obligatorio cuando el tipo de movimiento es COMPLETED.' }
+    )
     // Valida que los detalles del movimiento sean un arreglo válido y opcional
     // @IsDefined({ message: 'El campo inventoryMovementDetails es obligatorio cuando el status es COMPLETED.' })
     // @IsArray({ message: 'Debe agregar los detalles del movimiento.' })
@@ -110,4 +111,8 @@ class DetailSupplierDto {
     )
     @IsNotEmpty({ message: 'La cantidad entregada es obligatoria.' })
     deliveredQuantity?: string;
+
+    @IsOptional()
+    @IsISO8601DateString({ message: "La fecha de entrega general (generalDeliveryDate) debe ser una fecha válida en formato ISO 8601 (ejemplo: '2025-01-01T00:00:00.000Z')." })
+    deliveryDate?: Date | null;
 }

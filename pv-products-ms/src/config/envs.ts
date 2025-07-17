@@ -6,14 +6,14 @@ import * as joi from 'joi';
 
 // Definir una interface para las variables de entorno que se van a definir
 interface EnvVars {
-    PORT: number;           // El puerto en el q el servidor debe escuchar
+    // PORT: number;           // El puerto en el q el servidor debe escuchar
     DATABASE_URL: string;
     NATS_SERVERS: string[]; // Lista de servidores NATS
 }
 
 // Define el equema de validación para las variables de entorno
 const envsSchema = joi.object({
-    PORT: joi.number().required(),
+    // PORT: joi.number().required(),
     DATABASE_URL: joi.string().required(),
     NATS_SERVERS: joi.array().items(joi.string().required()),
 }).unknown(true); // Permite otras propiedades no definidas en el esquema
@@ -34,7 +34,7 @@ const envVars: EnvVars = value;
 
 // Exporta las variables de entorno validadas para q puedan ser usadas en otras partes del codigo
 export const envs = {
-    port: envVars.PORT, // El puerto donde el servidor escucha
+    // port: envVars.PORT, // El puerto donde el servidor escucha
     databaseUrl: envVars.DATABASE_URL,
     natsServers: envVars.NATS_SERVERS // Lista de servidores NATS
 }

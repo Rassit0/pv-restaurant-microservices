@@ -40,7 +40,7 @@ model RecipeItem {
 
 model ProductionOrders {
   id              String                @id @default(uuid())
-  branchId        String?               @map("branch_id")
+  originBranchId  String?               @map("origin_branch_id")
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
   status          ProductionOrderStatus @default(PENDING)
@@ -54,8 +54,39 @@ model ProductionOrders {
 
   // Relación con ProductionOrderDetail
   productionOrderDetails ProductionOrderDetail[]
+  productionWaste        ProductionWaste[]
 
   @@map("production_orders")
+}
+
+// Enum para razones comunes de desperdicio/merma en producción
+enum WasteReason {
+  DAMAGED // Producto dañado
+  EXPIRED // Producto vencido
+  RETURNED // Producto devuelto
+  OVERPRODUCTION // Sobreproducción
+  CANCELED // Orden cancelada
+  OTHER // Otro motivo
+}
+
+/**
+ * Tabla general para registrar productos y cantidades desperdiciadas o usadas en cualquier etapa del ciclo de vida de una orden de producción.
+ * Permite llevar trazabilidad de mermas, devoluciones, sobreconsumo, productos dañados, vencidos, devoluciones o desperdicio tanto durante la producción (IN_PROGRESS),
+ * al completar (COMPLETED) o al cancelar (CANCELED) una orden.
+ * Así, se puede auditar y analizar el motivo y cantidad de desperdicio asociado a cada orden de producción.
+ */
+model ProductionWaste {
+  id                String      @id @default(uuid())
+  productionOrderId String      @map("production_order_id")
+  productId         String      @map("product_id")
+  quantity          Decimal     @db.Decimal(10, 2)
+  reason            WasteReason // Motivo del desperdicio (enum)
+  reasonDescription String? // Descripción opcional si reason es OTHER u observaciones adicionales
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  productionOrder ProductionOrders @relation(fields: [productionOrderId], references: [id])
+
+  @@map("production_waste")
 }
 
 model ProductionOrderDetail {
@@ -69,25 +100,24 @@ model ProductionOrderDetail {
   // Relaciones
   productionOrder ProductionOrders @relation(fields: [productionOrderId], references: [id])
   recipe          Recipe           @relation(fields: [recipeId], references: [id])
-  parallelGroup     ParallelGroup?   @relation(fields: [parallelGroupId], references: [id])
-  
+  parallelGroup   ParallelGroup?   @relation(fields: [parallelGroupId], references: [id])
+
   subTotalTime Int @map("sub_total_time")
 
   @@map("production_details")
 }
 
 model ParallelGroup {
-  id          String              @id @default(uuid())
-  name        String              @unique // Nombre del grupo paralelo
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  name      String   @unique // Nombre del grupo paralelo
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relación con los detalles de producción
   productionOrderDetails ProductionOrderDetail[]
 
   @@map("parallel_groups")
 }
-
 
 enum ProductionOrderStatus {
   PENDING

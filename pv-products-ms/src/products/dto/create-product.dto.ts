@@ -78,17 +78,17 @@ export class CreateProductDto {
     // @IsString({ message: "El ID de la temporada debe ser un texto válido." })
     // seasonId?: string;
 
-    @IsOptional()
-    @IsArray({ message: "Debe agregar el stock por Sucursal." })
-    @ValidateNested({ each: true })
-    @Type(() => BranchProductStockyDto) // Asocia ProductBranchStockDto
-    branchProductStock?: BranchProductStockyDto[]; // Agregado como un arreglo
+    // @IsOptional()
+    // @IsArray({ message: "Debe agregar el stock por Sucursal." })
+    // @ValidateNested({ each: true })
+    // @Type(() => BranchProductStockyDto) // Asocia ProductBranchStockDto
+    // branchProductStock?: BranchProductStockyDto[]; // Agregado como un arreglo
 
-    @IsOptional()
-    @IsArray({ message: "Debe agregar el stock por Almacén." })
-    @ValidateNested({ each: true })
-    @Type(() => WarehouseProductStockyDto) // Asocia ProductBranchStockDto
-    warehouseProductStock?: WarehouseProductStockyDto[]; // Agregado como un arreglo
+    // @IsOptional()
+    // @IsArray({ message: "Debe agregar el stock por Almacén." })
+    // @ValidateNested({ each: true })
+    // @Type(() => WarehouseProductStockyDto) // Asocia ProductBranchStockDto
+    // warehouseProductStock?: WarehouseProductStockyDto[]; // Agregado como un arreglo
 
     @IsNotEmpty({ message: "El campo 'typesProduct' no puede estar vacío." })
     @IsArray({ message: "El campo 'typesProduct' debe ser un array de tipos de producto." })

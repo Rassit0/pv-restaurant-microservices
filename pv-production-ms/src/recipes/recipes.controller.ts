@@ -5,6 +5,7 @@ import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { RecipesPaginationDto } from './dto/recipes-pagination';
 import { RemoveRecipeDto } from './dto/remove-recipe.dto';
+import { CountRecipesDto } from './dto/count-orders.dto';
 
 @Controller()
 export class RecipesController {
@@ -33,5 +34,15 @@ export class RecipesController {
   @MessagePattern('removeRecipe')
   remove(@Payload() removeRecipeDto: RemoveRecipeDto) {
     return this.recipesService.remove(removeRecipeDto.id, removeRecipeDto.deletedByUserId);
+  }
+
+  @MessagePattern('recipe.getProductIdsFromRecipe')
+  getProductIdsFromRecipe(@Payload() term: string) {
+    return this.recipesService.getProductIdsFromRecipe(term);
+  }
+
+  @MessagePattern('production.countRecipes')
+  countProductionOrders(@Payload() dto: CountRecipesDto) {
+    return this.recipesService.countRecipes(dto);
   }
 }

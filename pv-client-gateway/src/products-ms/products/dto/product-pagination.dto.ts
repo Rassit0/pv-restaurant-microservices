@@ -1,5 +1,5 @@
-import { Type } from "class-transformer";
-import { IsEnum, IsIn, IsOptional, IsPositive, IsString } from "class-validator";
+import { Transform, Type } from "class-transformer";
+import { IsArray, IsEnum, IsIn, IsOptional, IsPositive, IsString } from "class-validator";
 import { PaginationDto } from "src/common/dto/pagination.dto";
 
 // Opcional: Si deseas definir un conjunto de valores posibles para el `status`
@@ -23,7 +23,19 @@ export class ProductPaginationDto extends PaginationDto {
 
     @IsOptional()
     @IsString()
+    filterByLocationId?: string;
+
+    @IsOptional()
+    @IsString({message:'El campo (filterByRecipeId) debe ser un string'})
+    filterByRecipeId?: string;
+
+    @IsOptional()
+    @IsString()
     branchId?: string;
+
+    @IsOptional()
+    @IsString()
+    warehouseId?: string;
 
     @IsOptional()
     @IsPositive()
@@ -44,4 +56,10 @@ export class ProductPaginationDto extends PaginationDto {
     @IsOptional()
     @IsIn(['name', 'description', 'createdAt'], { message: "La columna de ordenamiento debe ser 'name', 'description' o 'createdAt'." })
     columnOrderBy: 'name' | 'description' | 'createdAt' = 'name';
+
+    @IsOptional()
+    @IsArray({ message: 'El campo "productIds" debe ser un arreglo.' })
+    @IsString({ each: true, message: 'Cada elemento de "productIds" debe ser una cadena de texto.' })
+    @Transform(({ value }) => (Array.isArray(value) ? value : [value])) // Asegura que siempre sea un arreglo
+    productIds?: string[];
 }

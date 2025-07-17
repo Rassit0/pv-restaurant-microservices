@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from 'generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
-    private readonly logger = new Logger("Branch Service");
+    private readonly logger = new Logger("Persons Service");
 
     async onModuleInit() {
         await this.$connect();

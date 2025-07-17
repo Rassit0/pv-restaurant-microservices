@@ -94,5 +94,15 @@ export class ProductionController {
       )
   }
 
-
+  @UseGuards(ModulePermissionAccessGuard)
+  @ModulePermissionsGuard(['READ'])
+  @Get('summary/monthly-counts')
+  getMonthlyProductionCounts(@Query() dto: any) {
+    return this.client.send("getMonthlyProductionCounts", dto)
+      .pipe(
+        catchError(error => {
+          throw new RpcException(error)
+        })
+      )
+  }
 }

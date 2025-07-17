@@ -3,16 +3,17 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-    // Crear 5 grupos paralelos
-    const parallelGroups = await prisma.parallelGroup.createMany({
-        data: [
-            { name: 'Grupo A' },
-            { name: 'Grupo B' },
-            { name: 'Grupo C' },
-        ]
-    });
+  const grupos = ['Grupo A', 'Grupo B', 'Grupo C'];
 
-    console.log('Grupos paralelos creados:', parallelGroups);
+  for (const name of grupos) {
+    await prisma.parallelGroup.upsert({
+      where: { name }, // asegúrate de que `name` tenga un índice único en el modelo
+      update: {}, // no actualiza nada si ya existe
+      create: { name },
+    });
+  }
+
+  console.log('Grupos paralelos verificados/creados');
 }
 
 main()

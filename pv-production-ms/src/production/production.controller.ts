@@ -4,6 +4,8 @@ import { ProductionService } from './production.service';
 import { CreateProductionDto } from './dto/create-production.dto';
 import { UpdateProductionDto } from './dto/update-production.dto';
 import { ProductionPaginationDto } from './dto/production-pagination';
+import { ProductionMonthlySummaryDto } from './dto/production-monthly-summary.dto';
+import { CountOrdersDto } from './dto/count-orders.dto';
 
 @Controller()
 export class ProductionController {
@@ -37,5 +39,15 @@ export class ProductionController {
   @MessagePattern('findAllParallelGroups')
   findAllParallelGroups() {
     return this.productionService.findAllParallelGroups();
+  }
+
+  @MessagePattern('getMonthlyProductionCounts')
+  getMonthlyProductionCounts(@Payload() dto: ProductionMonthlySummaryDto) {
+    return this.productionService.getMonthlyProductionCounts(dto);
+  }
+
+  @MessagePattern('production.countProductionOrders')
+  countProductionOrders(@Payload() dto: CountOrdersDto) {
+    return this.productionService.countProductionOrders(dto);
   }
 }

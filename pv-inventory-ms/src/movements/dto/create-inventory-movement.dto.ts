@@ -66,9 +66,9 @@ export class CreateInventoryMovementDto {
     inventoryMovementDetails: CreateInventoryMovementDetailDto[];
 
     // Valida que la fecha de entrega sea opcional y esté en formato ISO 8601
-    @IsOptional()
-    @IsISO8601DateString({ message: "La fecha de ingreso(entryDate) debe ser una fecha válida en formato ISO 8601 (ejemplo: '2025-01-01T00:00:00.000Z')." })
-    deliveryDate?: Date;
+    @IsDefined({ message: "La fecha de entrega general (generalDeliveryDate) es obligatoria." })
+    @IsISO8601DateString({ message: "La fecha de entrega general (generalDeliveryDate) debe ser una fecha válida en formato ISO 8601 (ejemplo: '2025-01-01T00:00:00.000Z')." })
+    generalDeliveryDate: Date;
 
     // Valida que originBranchId sea obligatorio para ciertos tipos de movimiento y no esté presente si originWarehouseId existe
     @ValidateIfCondition(
@@ -213,6 +213,10 @@ class DetailSupplierDto {
     )
     @IsNotEmpty({ message: 'La cantidad entregada es obligatoria.' })
     deliveredQuantity?: string;
+
+    @IsOptional()
+    @IsISO8601DateString({ message: "La fecha de entrega (deliveryDate) debe ser una fecha válida en formato ISO 8601 (ejemplo: '2025-01-01T00:00:00.000Z')." })
+    deliveryDate?: Date;
 
     // @IsOptional()
     // @IsEnum(DeliveryStatus, { message: 'El campo (deliveryStatus) es obligatorio y debe ser un valor: "PENDING" | "COMPLETE" | "PARTIAL" | "NOT_DELIVERED" | "OVER_DELIVERED".' })

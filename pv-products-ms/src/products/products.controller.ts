@@ -5,6 +5,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { PaginationDto } from 'src/common/dto/pagination.dto';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ProductPaginationDto } from './dto/product-pagination.dto';
+import { LocationType } from '@prisma/client';
 
 @Controller('products')
 export class ProductsController {
@@ -40,37 +41,14 @@ export class ProductsController {
     return this.productsService.validateProductsIds(ids);
   }
 
-  @MessagePattern('products.verifyStockWarehouse')
-  verifyStockWarehouse(@Payload() { productId, warehouseId }: { productId: string, warehouseId: string }) {
-    return this.productsService.verifyStockWarehouse(productId, warehouseId);
-  }
-  @MessagePattern('products.verifyStockBranch')
-  verifyStockBranch(@Payload() { productId, branchId }: { productId: string, branchId: string }) {
-    return this.productsService.verifyStockBranch(productId, branchId);
+  @MessagePattern('products.getStock')
+  getStock(@Payload() { productId, locationId, locationType }: { productId: string, locationId: string, locationType: LocationType }) {
+    return this.productsService.getStock({ productId, locationId, locationType });
   }
 
-  @MessagePattern('products.stockWarehouseExists')
-  stockWarehouseExists(@Payload() warehouseId: string) {
-    return this.productsService.stockWarehouseExists(warehouseId);
-  }
-  @MessagePattern('products.validateStockBranch')
-  stockBranchExists(@Payload() branchId: string) {
-    return this.productsService.stockBranchExists(branchId);
-  }
-
-  // @MessagePattern('products.updateOrCreateStockWarehouse')
-  // updateOrCreateStockWarehouse(stockUpdates: { productId: string, warehouseId: string, quantity: number }[]){
-  //   return this.productsService.updateOrCreateStockWarehouse(stockUpdates);
-  // }
-
-  // @MessagePattern('products.updateOrCreateStockBranch')
-  // updateOrCreateStockBranch(stockUpdates: { productId: string, branchId: string, quantity: number }[]){
-  //   return this.productsService.updateOrCreateStockBranch(stockUpdates);
-  // }
-
-  @MessagePattern('products.updateOrCreateStock')
-  updateOrCreateStock(stockUpdates: { productId: string, branchOrWarehouse: 'BRANCH' | 'WAREHOUSE', updateId: string, quantity: number }[]) {
-    return this.productsService.updateOrCreateStock(stockUpdates);
+  @MessagePattern('products.updateOrCreateStockLocations')
+  updateOrCreateStockLocations(stockUpdates: { productId: string, locationType: LocationType, updateId: string, quantity: number }[]) {
+    return this.productsService.updateOrCreateStockLocations(stockUpdates);
   }
 
   @MessagePattern('get_products_by_ids')

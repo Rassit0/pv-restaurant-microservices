@@ -23,6 +23,10 @@ export class ProductPaginationDto extends PaginationDto {
 
     @IsOptional()
     @IsString()
+    filterByLocationId?: string;
+
+    @IsOptional()
+    @IsString()
     branchId?: string;
 
     @IsOptional()

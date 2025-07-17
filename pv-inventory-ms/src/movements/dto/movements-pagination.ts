@@ -40,8 +40,8 @@ export class MovementsPaginationDto {
 
     @IsString()
     @IsOptional()
-    @IsIn(['updatedAt', 'createdAt'], { message: "La columna de ordenamiento debe ser 'name', 'description' o 'createdAt'." })
-    columnOrderBy: 'createdAt' | 'updatedAt' = 'createdAt';
+    @IsIn(['updatedAt', 'createdAt', 'generalDeliveryDate'], { message: "La columna de ordenamiento debe ser 'createdAt', 'updatedAt' o 'generalDeliveryDate'." })
+    columnOrderBy: 'createdAt' | 'updatedAt' | 'generalDeliveryDate' = 'createdAt';
 
 
     @IsOptional()

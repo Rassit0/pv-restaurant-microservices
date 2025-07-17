@@ -5,8 +5,16 @@ const prisma = new PrismaClient();
 
 async function main() {
     const transaction = await prisma.$transaction(async (tx) => {
+
+        const permissions = ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'] as const;
+        type PermissionName = typeof permissions[number];
+
         // Insertar los módulos en la tabla `modules` con relaciones padre-hijo
-        const moduleData = [
+        type ModuleType = {
+            readonly name: string;
+            readonly parent?: string;
+        };
+        const moduleData: ModuleType[] = [
             { name: 'USERS' },
             { name: 'USERS_ROLES', parent: 'USERS' },
             { name: 'REPORTS' },
@@ -15,11 +23,13 @@ async function main() {
             { name: 'INVENTORY_OUTCOME', parent: 'INVENTORY' },
             { name: 'INVENTORY_TRANSFER', parent: 'INVENTORY' },
             { name: 'INVENTORY_ADJUSTMENT', parent: 'INVENTORY' },
+            { name: 'INVENTORY_ADJUSTMENT_INCOME', parent: 'INVENTORY_ADJUSTMENT' },
+            { name: 'INVENTORY_ADJUSTMENT_OUTCOME', parent: 'INVENTORY_ADJUSTMENT' },
             { name: 'NOTIFICATIONS' },
             { name: 'NOTIFICATIONS_LOW_STOCK', parent: 'NOTIFICATIONS' },
             { name: 'PRODUCTS' },
-            { name: 'PRODUCTS_CATEGORIES', parent: 'PRODUCTS' },
-            { name: 'PRODUCTS_UNITS', parent: 'PRODUCTS' },
+            { name: 'PRODUCTS_CATEGORIES' },
+            { name: 'PRODUCTS_UNITS' },
             { name: 'SETTINGS' },
             { name: 'BRANCHES' },
             { name: 'PRODUCTION' },
@@ -30,7 +40,9 @@ async function main() {
             { name: 'WAREHOUSES' },
             { name: 'HOME' },
             { name: 'PERSONS' },
-        ];
+        ] as const;
+
+        type ModuleName = typeof moduleData[number]['name'];
 
         const moduleRecords: Record<string, any> = {};
 
@@ -54,9 +66,6 @@ async function main() {
         }
 
         console.log('Módulos creados correctamente con jerarquía');
-
-        // Insertar permisos
-        const permissions = ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'];
 
         for (const permissionName of permissions) {
             await tx.permission.upsert({
@@ -91,17 +100,20 @@ async function main() {
         const allModules = await tx.module.findMany();
         const allPermissions = await tx.permission.findMany();
 
+
+        type RoleModulesPermissionsMap = {
+            [roleName: string]: {
+                [moduleName in ModuleName]?: PermissionName[];
+            };
+        };
+
         // Asignar módulos y permisos a roles
-        const roleModulesPermissionsMap = {
+        const roleModulesPermissionsMap: RoleModulesPermissionsMap = {
             super_admin: {
                 USERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 USERS_ROLES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 REPORTS: ['READ'],
                 INVENTORY: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
-                INVENTORY_INCOME: ['WRITE', 'READ', 'EDIT'],
-                INVENTORY_OUTCOME: ['WRITE', 'READ', 'EDIT'],
-                INVENTORY_TRANSFER: ['WRITE', 'READ', 'EDIT'],
-                INVENTORY_ADJUSTMENT: ['WRITE', 'READ', 'EDIT'],
                 PRODUCTS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 PRODUCTS_CATEGORIES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 PRODUCTS_UNITS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
@@ -110,8 +122,6 @@ async function main() {
                 PRODUCTION: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 PRODUCTION_RECIPES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 PRODUCTION_ORDERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
-                PRODUCTION_RECIPES_ENTRY: ['WRITE', 'READ', 'EDIT'],
-                PRODUCTION_RECIPES_EXIT: ['WRITE', 'READ', 'EDIT'],
                 SUPPLIERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 SUPPLIERS_CONTACTS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
                 WAREHOUSES: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE', 'RESTORE', 'DELETE_PHYSICAL'],
@@ -121,13 +131,10 @@ async function main() {
                 NOTIFICATIONS_LOW_STOCK: ['READ'],
             },
             administrador: {
-                USERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
+                // USERS: ['MANAGE', 'WRITE', 'READ', 'EDIT', 'DELETE'],
+                USERS_ROLES: ['READ'],
                 REPORTS: ['READ'],
                 INVENTORY: ['MANAGE', 'WRITE', 'READ', 'EDIT'],
-                INVENTORY_INCOME: ['WRITE', 'READ', 'EDIT'],
-                INVENTORY_OUTCOME: ['WRITE', 'READ', 'EDIT'],
-                INVENTORY_TRANSFER: ['WRITE', 'READ', 'EDIT'],
-                INVENTORY_ADJUSTMENT: ['WRITE', 'READ', 'EDIT'],
                 PRODUCTS: ['MANAGE', 'WRITE', 'READ', 'EDIT'],
                 PRODUCTS_CATEGORIES: ['MANAGE', 'WRITE', 'READ', 'EDIT'],
                 PRODUCTS_UNITS: ['MANAGE', 'WRITE', 'READ', 'EDIT'],
@@ -135,8 +142,6 @@ async function main() {
                 PRODUCTION: ['MANAGE', 'WRITE', 'READ', 'EDIT'],
                 PRODUCTION_RECIPES: ['MANAGE', 'WRITE', 'READ', 'EDIT'],
                 PRODUCTION_ORDERS: ['MANAGE', 'WRITE', 'READ', 'EDIT'],
-                PRODUCTION_RECIPES_ENTRY: ['WRITE', 'READ', 'EDIT'],
-                PRODUCTION_RECIPES_EXIT: ['WRITE', 'READ', 'EDIT'],
                 SUPPLIERS: ['MANAGE', 'WRITE', 'READ'],
                 SUPPLIERS_CONTACTS: ['MANAGE', 'WRITE', 'READ'],
                 WAREHOUSES: ['MANAGE', 'WRITE', 'READ'],
@@ -145,9 +150,8 @@ async function main() {
                 PERSONS: ['MANAGE', 'WRITE', 'READ', 'DELETE'],
             },
             encargado_inventario: {
+                USERS_ROLES: ['READ'],
                 INVENTORY: ['READ', 'EDIT', 'WRITE'],
-                INVENTORY_ENTRY: ['WRITE', 'READ'],
-                INVENTORY_EXIT: ['WRITE', 'READ'],
                 PRODUCTS: ['READ', 'WRITE'],
                 WAREHOUSES: ['READ'],
                 PRODUCTS_CATEGORIES: ['READ'],
@@ -162,6 +166,12 @@ async function main() {
                 PERSONS: ['READ', 'WRITE'],
             },
             cocinero: {
+                USERS_ROLES: ['READ'],
+                INVENTORY: ['READ'],
+                // INVENTORY_INCOME: ['WRITE', 'READ', 'EDIT'],
+                // INVENTORY_OUTCOME: ['WRITE', 'READ', 'EDIT'],
+                // INVENTORY_TRANSFER: ['WRITE', 'READ', 'EDIT'],
+                INVENTORY_ADJUSTMENT: ['WRITE', 'READ', 'EDIT'],
                 PRODUCTION: ['READ', 'WRITE'],
                 PRODUCTION_RECIPES: ['READ', 'WRITE'],
                 PRODUCTION_ORDERS: ['READ', 'WRITE', 'EDIT'],
@@ -169,19 +179,41 @@ async function main() {
                 PRODUCTS_CATEGORIES: ['READ'],
                 PRODUCTS_UNITS: ['READ'],
                 // PRODUCTION_RECIPES_ENTRY: ['WRITE', 'READ'],
-                PRODUCTION_RECIPES_EXIT: ['WRITE', 'READ'],
+                // PRODUCTION_RECIPES_EXIT: ['WRITE', 'READ'],
                 NOTIFICATIONS: ['READ'],
                 BRANCHES: ['READ'],
                 SUPPLIERS: ['READ'],
                 WAREHOUSES: ['READ'],
                 NOTIFICATIONS_LOW_STOCK: ['READ'],
                 HOME: ['READ'],
+                PERSONS: ['READ'],
             }
         };
 
 
+
         for (const role of allRoles) {
             const permissions = roleModulesPermissionsMap[role.name] || {};
+
+            // Eliminar todos los módulos de este rol que ya no están definidos
+            const existingRoleModules = await tx.roleModule.findMany({
+                where: { roleId: role.id },
+                include: { module: true }
+            });
+
+            for (const roleModule of existingRoleModules) {
+                if (!permissions[roleModule.module.name]) {
+                    // Eliminar permisos del roleModule
+                    await tx.roleModulePermission.deleteMany({
+                        where: { roleModuleId: roleModule.id }
+                    });
+
+                    // Eliminar el roleModule
+                    await tx.roleModule.delete({
+                        where: { id: roleModule.id }
+                    });
+                }
+            }
 
             for (const [moduleName, permissionList] of Object.entries(permissions)) {
                 const module = allModules.find(m => m.name === moduleName);
@@ -198,6 +230,12 @@ async function main() {
                     }
                 });
 
+                // Eliminar permisos actuales para evitar duplicados
+                await tx.roleModulePermission.deleteMany({
+                    where: { roleModuleId: roleModule.id }
+                });
+
+                // Insertar los nuevos permisos
                 if (!Array.isArray(permissionList)) {
                     console.error(`permissionList no es un array para el módulo ${roleModule.id}`);
                     continue;
@@ -207,15 +245,8 @@ async function main() {
                     const permission = allPermissions.find(p => p.name === permissionName);
                     if (!permission) continue;
 
-                    await tx.roleModulePermission.upsert({
-                        where: {
-                            roleModuleId_permissionId: {
-                                roleModuleId: roleModule.id,
-                                permissionId: permission.id
-                            }
-                        },
-                        update: {},
-                        create: {
+                    await tx.roleModulePermission.create({
+                        data: {
                             roleModuleId: roleModule.id,
                             permissionId: permission.id,
                         },

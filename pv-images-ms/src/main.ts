@@ -8,7 +8,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const uploadDir = join(process.cwd(), 'uploads', 'compress');
   if (!existsSync(uploadDir)) {
-    mkdirSync(uploadDir);
+    mkdirSync(uploadDir, { recursive: true });
   }
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
   await app.listen(process.env.PORT ?? 3009);

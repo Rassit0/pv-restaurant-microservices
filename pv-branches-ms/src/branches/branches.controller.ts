@@ -3,7 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { BranchesService } from './branches.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
-import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { BranchesPaginationDto } from './dto/branches-pagination.dto';
 
 @Controller()
 export class BranchesController {
@@ -15,7 +15,7 @@ export class BranchesController {
   }
 
   @MessagePattern('findAllBranches')
-  findAll(@Payload() paginationDto: PaginationDto) {
+  findAll(@Payload() paginationDto: BranchesPaginationDto) {
     return this.branchesService.findAll(paginationDto);
   }
 

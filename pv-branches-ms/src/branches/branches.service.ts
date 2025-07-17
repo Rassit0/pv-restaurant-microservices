@@ -5,7 +5,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { NATS_SERVICE } from 'src/config';
-import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { BranchesPaginationDto } from './dto/branches-pagination.dto';
 
 @Injectable()
 export class BranchesService {
@@ -60,46 +60,50 @@ export class BranchesService {
     }
   }
 
-  async findAll(paginationDto: PaginationDto) {
+  async findAll(paginationDto: BranchesPaginationDto) {
 
-    const { limit, page, search } = paginationDto;
+    const { limit, page, search, branchesIds, status, columnOrderBy, orderBy } = paginationDto;
     // Calcular el offset para la paginación
     const skip = limit ? (page - 1) * limit : undefined;
+
+    const where = {
+      ...(branchesIds && branchesIds.length > 0
+        ? { id: { in: branchesIds } } // Filtrar por IDs de suc)
+        : {}),
+      // Filtrar por estado si se proporciona
+      OR: search
+        ? [
+          { name: { contains: search, mode: 'insensitive' as const } },
+          { location: { contains: search, mode: 'insensitive' as const } },
+        ]
+        : undefined,
+      ...((status && status !== 'all') && { isEnable: status === 'active' }), // Asegúrate de que el campo en tu base de datos sea 'isEnable'
+    };
+
     const branches = await this.prisma.branch.findMany({
       skip, // Desplazamiento para la paginación
       take: limit ? limit : undefined, // si es 0 devuelve todo
-      where: {
-        OR: search
-          ? [
-            { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
-            { location: { contains: search, mode: 'insensitive' } },
-          ]
-          : undefined,
-      },
+      where,
       orderBy: {
-        name: 'asc'
-      }
+        [columnOrderBy]: orderBy
+      },
     });
 
     const totalItems = await this.prisma.branch.count({
-      where: {
-        OR: search
-          ? [
-            { name: { contains: search, mode: 'insensitive' } }, // insensitive q no distingue de mayusculas o minusculas
-            { location: { contains: search, mode: 'insensitive' } },
-          ]
-          : undefined,
-      }
+      skip, // Desplazamiento para la paginación
+      take: limit ? limit : undefined, // si es 0 devuelve todo
+      where
     });
+
     // Obtener almacenes para cada sucursal
-    const branchesWithWarehouses = await Promise.all(
+    const branchesWithExtras = await Promise.all(
       branches.map(async (branch) => {
         const warehouses = await firstValueFrom(this.natsClient.send('get_warehouses_by_branch_id', branch.id));
         // Enviar solicitud al servicio de sucursales para validar los branchIds
         const manager = await firstValueFrom(
           this.natsClient.send('auth.user.findOne', branch.managerId).pipe(
             catchError((error) => {
-              // console.error('Error fetching findOne:', error);
+              console.error('Error fetching findOne:', error);
               return of(null);
             })
           )
@@ -109,7 +113,7 @@ export class BranchesService {
     );
 
     return {
-      branches: branchesWithWarehouses,
+      branches: branchesWithExtras,
       meta: {
         totalItems, // Total de productos encontrados
         itemsPerPage: limit || totalItems, // Si limit es 0, mostrar todos los elementos
@@ -132,7 +136,16 @@ export class BranchesService {
         })
       }
       const warehouses = await firstValueFrom(this.natsClient.send('get_warehouses_by_branch_id', branch.id));;
-      return { ...branch, warehouses };
+      // Enviar solicitud al servicio de sucursales para validar los branchIds
+      const manager = await firstValueFrom(
+        this.natsClient.send('auth.user.findOne', branch.managerId).pipe(
+          catchError((error) => {
+            console.error('Error fetching findOne:', error);
+            return of(null);
+          })
+        )
+      );
+      return { ...branch, warehouses, manager };
     } catch (error) {
       if (error instanceof RpcException) throw error;
       console.log(error);

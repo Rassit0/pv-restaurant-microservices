@@ -9,6 +9,7 @@ import { ModuleAccessGuard } from 'src/auth-ms/auth/guards/auth.module.access.gu
 import { ModuleGuard } from 'src/auth-ms/auth/decorators/module.access';
 import { ModulePermissionAccessGuard } from 'src/auth-ms/auth/guards/auth.module.permission.guard';
 import { ModulePermissionsGuard } from 'src/auth-ms/auth/decorators/module.permission';
+import { FindByIdsDto } from './dto/findByIds.dto';
 
 @UseGuards(AuthGuard, ModuleAccessGuard)
 @ModuleGuard('BRANCHES')
@@ -42,6 +43,19 @@ export class BranchesController {
         })
       )
   }
+
+    @UseGuards(ModulePermissionAccessGuard)
+    @ModulePermissionsGuard(['READ'])
+    @Post('by-ids')
+    findByIds(@Query() paginationDto: any, @Body() findByIdsDto: FindByIdsDto) {
+      return this.client.send("findAllBranches", { ...paginationDto, branchesIds: findByIdsDto.branchesIds })
+        .pipe(
+          catchError(error => {
+            console.log(error)
+            throw new RpcException(error)
+          })
+        )
+    }
 
   @UseGuards(ModulePermissionAccessGuard)
   @ModulePermissionsGuard(['READ'])

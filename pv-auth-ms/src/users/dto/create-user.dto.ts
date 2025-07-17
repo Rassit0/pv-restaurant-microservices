@@ -1,10 +1,10 @@
-import { 
-    IsEmail, 
-    IsNotEmpty, 
-    IsOptional, 
-    IsString, 
-    IsStrongPassword, 
-    IsUUID, 
+import {
+    IsEmail,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    IsStrongPassword,
+    IsUUID,
     IsBoolean,
     ValidateNested,
     IsArray
@@ -52,6 +52,10 @@ export class CreateUserDto {
     @IsBoolean()
     @IsOptional()
     isEnable?: boolean;
+
+    @IsBoolean()
+    @IsOptional()
+    hasGlobalBranchesAccess?: boolean;
 
     @IsArray()
     @ValidateNested({ each: true })

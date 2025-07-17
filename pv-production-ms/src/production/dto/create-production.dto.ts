@@ -16,8 +16,8 @@ import { IsISO8601DateString } from "src/common/validators";
 
 export class CreateProductionDto {
     @IsUUID()
-    @IsNotEmpty({ message: "El campo 'branchId' es obligatorio y debe ser un UUID válido." })
-    branchId: string;
+    @IsNotEmpty({ message: "El campo 'originBranchId' es obligatorio y debe ser un UUID válido." })
+    originBranchId: string;
 
     @IsUUID()
     @IsNotEmpty({ message: "El campo 'createdByUserId' es obligatorio y debe ser un UUID válido." })

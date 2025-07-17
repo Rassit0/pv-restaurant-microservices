@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Inject, Query, UseGuards, Req, HttpStatus } from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { catchError } from 'rxjs';
@@ -10,6 +10,7 @@ import { ModuleAccessGuard } from 'src/auth-ms/auth/guards/auth.module.access.gu
 import { ModuleGuard } from 'src/auth-ms/auth/decorators/module.access';
 import { ModulePermissionsGuard } from 'src/auth-ms/auth/decorators/module.permission';
 import { ModulePermissionAccessGuard } from 'src/auth-ms/auth/guards/auth.module.permission.guard';
+import { FindByIdsDto } from './dto/findByIds.dto';
 
 @UseGuards(AuthGuard, ModuleAccessGuard)
 @ModuleGuard('PRODUCTS')
@@ -36,7 +37,27 @@ export class ProductsController {
   @ModulePermissionsGuard(['READ'])
   @Get()
   findAll(@Query() paginationDto: any) {
+    if (paginationDto.productIds) {
+      throw new RpcException({
+        message: `El parámetro "productIds" no está permitido en esta ruta. Usa el endpoint POST /products/by-ids para obtener productos por ID.`,
+        statusCode: HttpStatus.BAD_REQUEST,
+      });
+    }
+
     return this.client.send("findAllProducts", paginationDto)
+      .pipe(
+        catchError(error => {
+          console.log(error)
+          throw new RpcException(error)
+        })
+      )
+  }
+
+  @UseGuards(ModulePermissionAccessGuard)
+  @ModulePermissionsGuard(['READ'])
+  @Post('by-ids')
+  findByIds(@Query() paginationDto: any, @Body() findByIdsDto: FindByIdsDto) {
+    return this.client.send("findAllProducts", { ...paginationDto, productIds: findByIdsDto.productIds })
       .pipe(
         catchError(error => {
           console.log(error)

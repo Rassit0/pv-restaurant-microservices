@@ -180,7 +180,7 @@ export class SuppliersService {
 
   async findAll(paginationDto: SupplierPaginationDto) {
     try {
-      const { limit, page, search, orderBy, columnOrderBy, status, deleted, searchName, filterSuppliersByProductId, supplierIds } = paginationDto;
+      const { limit, page, search, orderBy, columnOrderBy, status, deleted, searchName, supplierIds, filterSuppliersByProductId } = paginationDto;
 
       // Obtener los supplierIds si llega filterSuppliersByProductId
       const supplierIdsByProduct = filterSuppliersByProductId ? await firstValueFrom(
@@ -228,7 +228,7 @@ export class SuppliersService {
 
       // Construcción del filtro WHERE reutilizable
       const baseWhere = {
-        ...(filteredSupplierIds && Array.isArray(filteredSupplierIds) && filteredSupplierIds.length > 0
+        ...(filteredSupplierIds && Array.isArray(filteredSupplierIds)
           ? { id: { in: filteredSupplierIds } }
           : {}),
 

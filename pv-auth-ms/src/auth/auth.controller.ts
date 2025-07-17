@@ -9,30 +9,31 @@ import { UsersPaginationDto } from './dto/users-pagination';
 
 @Controller()
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @MessagePattern('auth.user.register')
-  registerUser(@Payload() registerUserDto:RegisterUserDto){
+  registerUser(@Payload() registerUserDto: RegisterUserDto) {
     return this.authService.register(registerUserDto);
   }
 
   @MessagePattern('auth.user.login')
-  loginUser(@Payload() loginUserDto: LoginUserDto){
+  loginUser(@Payload() loginUserDto: LoginUserDto) {
     return this.authService.login(loginUserDto);
   }
 
   @MessagePattern('auth.user.verify')
-  verifyToken(@Payload() token: string){
+  verifyToken(@Payload() token: string) {
     return this.authService.verify(token);
   }
 
   @MessagePattern('auth.user.findAll')
-  findAll(@Payload() paginationDto: UsersPaginationDto){
+  findAll(@Payload() paginationDto: UsersPaginationDto) {
     return this.authService.findAll(paginationDto);
   }
 
   @MessagePattern('auth.user.findOne')
-  findOne(@Payload() id: string){
+  findOne(@Payload() id: string) {
     return this.authService.findOne(id);
   }
+
 }

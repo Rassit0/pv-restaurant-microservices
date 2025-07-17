@@ -1,66 +1,308 @@
-name: pv-microservices
+name: pv-microservices-build
 services:
 
-# ====== NATS SERVER =====
+  # ====== NATS SERVER =====
   # Servicio para ejecutar el servidor de mensajería NATS
   nats-server:
     # Usa la imagen oficial más reciente de NATS
-    image: nats:latest
+    image: nats:2.11.4
     # Nombre del contenedor para identificarlo fácilmente
     container_name: pv-nats-server
+    restart: always
     # Mapea los puertos locales a los del contenedor
     ports:
       - "8222:8222" # Puerto para la interfaz de administración de NATS
       - "4222:4222" # Puerto para las conexiones de cliente a NATS
+
+  # ===== CLIENT GATEWAY =====
+  pv-client-gateway:
+    image: pv-client-gateway
+    container_name: pv-client-gateway
+    restart: always
+    build:
+      context: ./pv-client-gateway
+      dockerfile: dockerfile
+
+    # Utiliza un puerto y lo expone al anfitrion
+    ports:
+      - ${CLIENT_GATEWAY_PORT}:${CLIENT_GATEWAY_PORT}
+
+    environment:
+      PORT: ${CLIENT_GATEWAY_PORT}
+      NATS_SERVERS: nats://nats-server:4222
+  
+  # ===== PERSONS MS =====
+  pv-persons-db-postgres:
+    image: postgres:17
+    restart: always
+    container_name: pv_persons_database
+    environment:
+      POSTGRES_DB: persons
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5440:5432
+  # volumes:
+  #   - ./pv-persons-ms/postgres:/var/lib/postgresql/data  
+  pv-persons-microservice:
+    image: pv-persons-microservice
+    depends_on:
+      - pv-persons-db-postgres
+      - nats-server
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-persons-ms
+      dockerfile: dockerfile
+    container_name: pv-persons-microservice
+    environment:
+      DATABASE_URL: postgresql://admin:password@pv-persons-db-postgres:5432/persons?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+    command: npm run start:migrate:prod
+
+  # ===== AUTH MS =====
   pv-auth-db-postgres:
-    image: postgres
-    container_name: pv_auth_database
+    image: postgres:17
+    restart: always
+    container_name: pv-auth-db-postgres
     environment:
       POSTGRES_DB: auth
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
 
     ports:
-      - 5433:5432
+      - 5432:5432
 
-    volumes:
-      - ./pv-auth-ms/postgres:/var/lib/postgresql/data
+  # volumes:
+  #   - ./pv-auth-ms/postgres:/var/lib/postgresql/data
 
+  pv-auth-microservice:
+    image: pv-auth-microservice
+    depends_on:
+      - pv-auth-db-postgres
+      - nats-server
+      - pv-persons-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-auth-ms
+      dockerfile: dockerfile
+    container_name: pv-auth-microservice
+    environment:
+      DATABASE_URL: postgresql://admin:password@pv-auth-db-postgres:5432/auth?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+      JWT_SECRET: JWTS3cre3t0   
+    command: npm run start:migrate:prod
+    
+  # ===== BRANCHES MS =====
   pv-branches-db-postgres:
-    image: postgres
+    image: postgres:17
+    restart: always
     container_name: pv_branches_database
     environment:
       POSTGRES_DB: branches
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
     ports:
-      - 5434:5432
-    volumes:
-      - ./pv-branches-ms/postgres:/var/lib/postgres/data
-
-  pv-products-db-postgres:
-    image: postgres
-    container_name: pv_products_database
+      - 5433:5432
+  # volumes:
+  #   - ./pv-branches-ms/postgres:/var/lib/postgres/data
+  pv-branches-microservice:
+    image: pv-branches-microservice
+    depends_on:
+      - pv-branches-db-postgres
+      - nats-server
+      - pv-auth-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-branches-ms
+      dockerfile: dockerfile
+    container_name: pv-branches-microservice
     environment:
-      POSTGRES_DB: products
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
-    ports:
-      - 5432:5432
-    volumes:
-      - ./pv-products-ms/postgres:/var/lib/postgresql/data
+      DATABASE_URL: postgresql://admin:password@pv-branches-db-postgres:5432/branches?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+    command: npm run start:migrate:prod
 
+  # ===== WAREHOUSES MS =====
   pv-warehouses-db-postgres:
-    image: postgres
+    image: postgres:17
+    restart: always
     container_name: pv_warehouses_database
     environment:
       POSTGRES_DB: warehouses
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
     ports:
-      - 5435:5432
-    volumes:
-      - ./pv-warehouses-ms/postgres:/var/lib/postgresql/data
+      - 5434:5432
+  # volumes:
+  #   - ./pv-warehouses-ms/postgres:/var/lib/postgresql/data
 
-# Ejecutar docker docker compose up -d
-# docker compose -f docker-compose.prod.yaml up 
+  pv-warehouses-microservice:
+    image: pv-warehouses-microservice
+    depends_on:
+      - pv-warehouses-db-postgres
+      - nats-server
+      - pv-branches-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-warehouses-ms
+      dockerfile: dockerfile
+    container_name: pv-warehouses-microservice
+    environment:
+      DATABASE_URL: postgresql://admin:password@pv-warehouses-db-postgres:5432/warehouses?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+    command: npm run start:migrate:prod
+
+  # ===== SUPPLIERS MS =====
+  pv-suppliers-db-postgres:
+    image: postgres:17
+    restart: always
+    container_name: pv_suppliers_database
+    environment:
+      POSTGRES_DB: suppliers
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5435:5432
+  # volumes:
+  #   - ./pv-suppliers-ms/postgres:/var/lib/postgresql/data
+
+  pv-suppliers-microservice:
+    image: pv-suppliers-microservice
+    depends_on:
+      - pv-suppliers-db-postgres
+      - nats-server
+      - pv-warehouses-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-suppliers-ms
+      dockerfile: dockerfile
+    container_name: pv-suppliers-microservice
+    environment:
+      DATABASE_URL: postgresql://admin:password@pv-suppliers-db-postgres:5432/suppliers?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+    command: npm run start:migrate:prod
+
+  # ===== PRODUCTOS MS ======
+  pv-products-db-postgres:
+    image: postgres:17
+    restart: always
+    container_name: pv_products_database
+    environment:
+      POSTGRES_DB: products
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5436:5432
+  #   volumes:
+  #     - ./pv-products-ms/postgres:/var/lib/postgresql/data
+  pv-products-microservice:
+    image: pv-products-microservice
+    depends_on:
+      - pv-products-db-postgres
+      - nats-server
+      - pv-branches-microservice
+      - pv-suppliers-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-products-ms
+      dockerfile: dockerfile
+    container_name: pv-products-microservice
+    environment:
+      DATABASE_URL: postgresql://admin:password@pv-products-db-postgres:5432/products?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+    command: npm run start:migrate:prod
+
+  # ===== IMAGES UPLOAD MS =====
+  pv-images-microservice:
+    image: pv-images-microservice
+    # depends_on:
+    #   - pv-products-db-postgres
+    #   - nats-server
+    #   - pv-branches-microservice
+    #   - pv-suppliers-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-images-ms
+      dockerfile: dockerfile
+    container_name: pv-images-microservice
+    environment:
+      PORT: 3009
+    command: npm run start:prod
+    ports:
+      - 3009:3009
+
+# ===== INVENTORY MS =====
+  pv-inventory-db-postgres:
+    image: postgres:17
+    restart: always
+    container_name: pv_inventory_database
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5438:5432
+  #   volumes:
+  #     - ./pv-inventory-ms/postgres:/var/lib/postgresql/data
+  pv-inventory-microservice:
+    image: pv-inventory-microservice
+    depends_on:
+      - pv-inventory-db-postgres
+      - nats-server
+      - pv-branches-microservice
+      - pv-suppliers-microservice
+      - pv-warehouses-microservice
+      - pv-products-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-inventory-ms
+      dockerfile: dockerfile
+    container_name: pv-inventory-microservice
+    environment:
+      DATABASE_URL: postgresql://admin:password@pv-inventory-db-postgres:5432/inventory?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+    command: npm run start:migrate:prod
+
+# ===== PRODUCTION MS =====
+  pv-production-db-postgres:
+    image: postgres:17
+    restart: always
+    container_name: pv_production_database
+    environment:
+      POSTGRES_DB: production
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5437:5432
+  #   volumes:
+  #     - ./pv-production-ms/postgres:/var/lib/postgresql/data
+  pv-production-microservice:
+    image: pv-production-microservice
+    depends_on:
+      - pv-production-db-postgres
+      - nats-server
+      - pv-branches-microservice
+      - pv-products-microservice
+    # Reinicia automáticamente el contenedor en caso de error
+    restart: always
+    build:
+      context: ./pv-production-ms
+      dockerfile: dockerfile
+    container_name: pv-production-microservice
+    environment:
+      DATABASE_URL: postgresql://admin:password@pv-production-db-postgres:5432/production?schema=public
+      NATS_SERVERS: nats://nats-server:4222
+    command: npm run start:migrate:prod
+
+
+  #Ejecutar primero para montar 
+  # docker compose -f docker-compose.prod.yaml build
+  # Ahora ejecutar para levantarlo
+  # docker compose -f docker-compose.prod.yaml up -d

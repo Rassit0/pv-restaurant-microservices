@@ -12,7 +12,7 @@ import { JwtPayload } from './interfaces/jwt-payload';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { contains } from 'class-validator';
 import { UsersPaginationDto } from './dto/users-pagination';
-import { catchError, firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, of } from 'rxjs';
 
 @Injectable()
 export class AuthService {
@@ -191,6 +191,14 @@ export class AuthService {
         })
       }
 
+      // Validar si el usuario está deshabilitado
+      if (!user.isEnable) {
+        throw new RpcException({
+          message: 'El usuario está deshabilitado',
+          statusCode: HttpStatus.FORBIDDEN
+        });
+      }
+
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
         throw new RpcException({
@@ -219,6 +227,7 @@ export class AuthService {
   async generateTokenJWT(payload: JwtPayload) {
     return this.jwtService.sign(payload);
   }
+
   async verify(token: string) {
     try {
       const { sub, iat, exp, ...user } = this.jwtService.verify(token, {
@@ -310,7 +319,12 @@ export class AuthService {
       ];
 
       // Enviar la solicitud al ms de branches para obtener los branches por los ids
-      const branches = await firstValueFrom(this.natsClient.send('get_branches_by_ids', branchIds));
+      const branches = await firstValueFrom(this.natsClient.send('get_branches_by_ids', branchIds).pipe(
+        catchError((error) => {
+          console.error(`Error capturado en get_branches_by_ids:`, error);
+          return of([]);
+        }))
+      );
 
       // Mapear la respuesta: anidal los datos de las sucursales a cada almacén
       const usersAndBranches = users.map(user => ({
@@ -416,7 +430,11 @@ export class AuthService {
       ];
 
       // Enviar la solicitud al ms de branches para obtener los branches por los ids
-      const branches = await firstValueFrom(this.natsClient.send('get_branches_by_ids', branchIds));
+      const branches = await firstValueFrom(this.natsClient.send('get_branches_by_ids', branchIds).pipe(
+        catchError((error) => {
+          console.error(`Error capturado en get_branches_by_ids:`, error);
+          return of([]);
+        })));
 
 
       return {

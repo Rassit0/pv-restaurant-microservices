@@ -57,8 +57,7 @@ model Product {
   // Campos adicional relacionado con el costo
   // purchasePrice Decimal @map("purchase_price") @db.Decimal(10, 2) // Precio de compra del producto
 
-  branchProductStock    BranchProductStock[] // relacion con los stocks por sucursal
-  warehouseProductStock WarehouseProductStock[] // relacion con los stocks por almacén
+  locationProductStock LocationProductStock[] // relacion con los stocks por ubicación
 
   createdAt       DateTime  @default(now()) @map("created_at") // Fecha de creación del producto, asignada automáticamente con la fecha actual
   updatedAt       DateTime  @updatedAt @map("updated_at") // Fecha de la última actualización del producto, asignada automáticamente en cada cambio
@@ -67,8 +66,8 @@ model Product {
   updatedByUserId String?   @map("updated_by_user_id") // ID del usuario que actualiza la receta
   deletedByUserId String?   @map("deleted_by_user_id")
 
-  types          TypeProduct[] // Relación con TypeProduct
-  suppliers      ProductSupplier[] // Relación con proveedores empresariales
+  types     TypeProduct[] // Relación con TypeProduct
+  suppliers ProductSupplier[] // Relación con proveedores empresariales
 
   @@map("products") // Mapea este modelo a la tabla 'products' en la base de datos
 }
@@ -126,28 +125,21 @@ model CategoryHierarchy {
   @@map("category_hierarchy")
 }
 
-model BranchProductStock {
-  id        String   @id @default(uuid())
-  productId String   @map("product_id")
-  branchId  String   @map("branch_id")
-  stock     Decimal  @db.Decimal(10, 2) // Cantidad de stock disponible
-  updatedAt DateTime @updatedAt @map("updated_at")
+model LocationProductStock {
+  id           String       @id @default(uuid())
+  productId    String       @map("product_id")
+  locationId   String       @map("location_id") // Puede ser branch o warehouse
+  locationType LocationType @map("location_type") // Enum para distinguir el tipo de ubicación
+  stock        Decimal      @db.Decimal(10, 2) // Cantidad de stock disponible
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
   product Product @relation(fields: [productId], references: [id])
 
-  @@unique([productId, branchId]) // Un producto solo puede tener un stock único por sucursal
-  @@map("branch_product_stock")
+  @@unique([productId, locationId, locationType]) // Un producto solo puede tener un stock único por ubicación y tipo
+  @@map("location_product_stock")
 }
 
-model WarehouseProductStock {
-  id          String   @id @default(uuid())
-  productId   String   @map("product_id")
-  warehouseId String   @map("warehouse_id")
-  stock       Decimal  @db.Decimal(10, 2) // Cantidad de stock disponible
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  product Product @relation(fields: [productId], references: [id])
-
-  @@unique([productId, warehouseId]) // Un producto solo puede tener un stock único por sucursal
-  @@map("warehouse_product_stock")
+enum LocationType {
+  BRANCH
+  WAREHOUSE
 }

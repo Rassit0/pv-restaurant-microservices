@@ -5,6 +5,7 @@ import { CreateInventoryMovementDto } from './dto/create-inventory-movement.dto'
 import { UpdateInventoryMovementDto } from './dto/update-inventory-movement.dto';
 import { UpdateDetailsAndStatusDto } from './dto/change-status-movement.dto';
 import { MovementsPaginationDto } from './dto/movements-pagination';
+import { MovementsMonthlySummaryDto } from './dto/movements-monthly-summary.dto';
 
 @Controller()
 export class MovementsController {
@@ -43,5 +44,10 @@ export class MovementsController {
   @MessagePattern('inventory.removeDetailSupplier')
   removeDetailSupplier(@Payload() id: string) {
     return this.inventoryService.removeDetailSupplier(id);
+  }
+
+  @MessagePattern('getMonthlyMovementsCounts')
+  getMonthlyMovementsCounts(@Payload() dto: MovementsMonthlySummaryDto) {
+    return this.inventoryService.getMonthlyMovementsCounts(dto);
   }
 }

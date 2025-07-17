@@ -14,10 +14,11 @@ import { EntryModule } from './inventory/entry/entry.module';
 import { MovementsModule } from './inventory/movements/movements.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PersonsModule } from './persons-ms/persons/persons.module';
+import { DashboardSummaryModule } from './dashboard/summary/dashboard-summary.module';
 
 @Module({
-  imports: [NatsModule, ProductsModule, CategoriesModule, UnitsModule, AuthModule, RolesModule, BranchesModule, WarehousesModule, SuppliersModule, RecipesModule, ProductionModule, EntryModule, MovementsModule, NotificationsModule, PersonsModule],
+  imports: [NatsModule, ProductsModule, CategoriesModule, UnitsModule, AuthModule, RolesModule, BranchesModule, WarehousesModule, SuppliersModule, RecipesModule, ProductionModule, EntryModule, MovementsModule, NotificationsModule, PersonsModule, DashboardSummaryModule],
   controllers: [],
   providers: [],
 })
-export class AppModule {}
+export class AppModule { }

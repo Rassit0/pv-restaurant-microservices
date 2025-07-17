@@ -100,4 +100,16 @@ export class MovementsController {
         })
       )
   }
+
+  @UseGuards(ModulePermissionAccessGuard)
+  @ModulePermissionsGuard(['READ'])
+  @Get('summary/monthly-counts')
+  getMonthlyProductionCounts(@Query() dto: any) {
+    return this.client.send("getMonthlyMovementsCounts", dto)
+      .pipe(
+        catchError(error => {
+          throw new RpcException(error)
+        })
+      )
+  }
 }

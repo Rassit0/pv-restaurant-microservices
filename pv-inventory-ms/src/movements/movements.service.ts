@@ -9,6 +9,19 @@ import { AdjustmentType, DeliveryStatus, InventoryMovementType, StatusInventoryM
 import { MovementsPaginationDto } from './dto/movements-pagination';
 import { UpdateDetailsAndStatusDto } from './dto/change-status-movement.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { error } from 'console';
+import { MovementsMonthlySummaryDto } from './dto/movements-monthly-summary.dto';
+
+
+interface VerifyStockOptions {
+  productId: string;
+  productName: string;      // nombre o id del producto
+  unitDisplay: string;      // ej: " kg" o ""
+  locationId: string;
+  locationType: 'WAREHOUSE' | 'BRANCH';
+  locationName: string;     // nombre o id de la ubicación
+  requiredQty: number;      // cantidad necesaria
+}
 
 @Injectable()
 export class MovementsService {
@@ -17,20 +30,81 @@ export class MovementsService {
     @Inject(NATS_SERVICE) private readonly natsClient: ClientProxy
   ) { }
 
-async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
-  return firstValueFrom(
-    this.natsClient.send(pattern, data).pipe(
-      catchError(error => {
-        console.error(`Error capturado en handleRpcError (pattern: ${pattern}):`, error);
-        throw new RpcException({
-          message: error?.message || 'Error desconocido al comunicarse con el microservicio.',
-          statusCode: error?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR,
-        });
-      }),
-      defaultIfEmpty(null) // <-- Esto evita el error de "no elements in sequence"
-    )
-  );
-}
+  async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
+    return firstValueFrom(
+      this.natsClient.send(pattern, data).pipe(
+        catchError(error => {
+          console.error(`Error capturado en handleRpcError (pattern: ${pattern}):`, error);
+          throw new RpcException({
+            message: error?.message || 'Error desconocido al comunicarse con el microservicio.',
+            statusCode: error?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR,
+          });
+        }),
+        defaultIfEmpty(null) // <-- Esto evita el error de "no elements in sequence"
+      )
+    );
+  }
+
+  /**
+ * Devuelve el nombre (o "[id]" si no se encuentra) y el id de la ubicación.
+ */
+  private async getLocationInfo(
+    type: 'BRANCH' | 'WAREHOUSE',
+    id: string,
+  ): Promise<{ name: string; id: string }> {
+    if (!id) return { name: `[${id}]`, id };
+
+    const pattern = type === 'WAREHOUSE' ? 'findOneWarehouse' : 'findOneBranch';
+
+    try {
+      const loc = await firstValueFrom(this.natsClient.send<{ name: string } | null>(pattern, id));
+      return { name: loc?.name ?? `[${id}]`, id };
+    } catch (e) {
+      console.error(`Error fetching ${type.toLowerCase()}:`, e);
+      return { name: `[${id}]`, id };
+    }
+  }
+
+  private async verifyStock({
+    productId,
+    productName,
+    unitDisplay,
+    locationId,
+    locationType,
+    locationName,
+    requiredQty,
+  }: VerifyStockOptions): Promise<string | undefined> {
+    try {
+      // 1️⃣  Consulta stock al microservicio
+      const available = Number(await firstValueFrom(
+        this.natsClient.send<number>('products.getStock', {
+          productId,
+          locationId,
+          locationType,
+        }),
+      ));
+
+      // 2️⃣  ¿Hay suficiente?
+      if (available < requiredQty) {
+        return `No hay suficiente stock en ${locationType === 'BRANCH' ? 'la sucursal' : 'el almacén'} ` +
+          `'${locationName}' para el producto '${productName}'. ` +
+          `Requerido: ${requiredQty.toFixed(2)}${unitDisplay}, disponible: ${available.toFixed(2)}${unitDisplay}.`;
+      }
+
+      // 3️⃣  Stock OK → no se devuelve mensaje
+      return undefined;
+    } catch (err) {
+      console.error('Error consultando stock:', err);
+
+      // 4️⃣  Propaga la excepción de forma uniforme
+      throw new RpcException({
+        message:
+          err?.message ??
+          `No se pudo obtener el stock para el producto '${productName}' en ${locationType === 'BRANCH' ? 'la sucursal' : 'el almacén'} '${locationName}'.`,
+        statusCode: err?.statusCode ?? HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
 
   async create(createMovementDto: CreateInventoryMovementDto) {
     enum InventoryMovementType {
@@ -135,9 +209,9 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
     // Realizar la creación del movimiento
     try {
       const { inventoryMovementDetails, movementType, adjustment, description, ...data } = createMovementDto;
-      if (!data.deliveryDate && adjustment.adjustmentType !== AdjustmentType.OUTCOME) {
+      if (!data.generalDeliveryDate && movementType !== InventoryMovementType.OUTCOME && adjustment?.adjustmentType !== AdjustmentType.OUTCOME) {
         throw new RpcException({
-          message: `La fecha de ingreso es requerida.`,
+          message: `La fecha de entrega es requerida.`,
           statusCode: HttpStatus.BAD_REQUEST,
         });
       }
@@ -182,8 +256,11 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
       }
 
       if (inventoryMovementDetails) {
+        const errorsStock: string[] = [];
         for (const detail of inventoryMovementDetails) {
-          const { productId, totalExpectedQuantity } = detail;
+          const { productId } = detail;
+
+          const requiredQty = Number(detail.totalExpectedQuantity);
 
           const product = await firstValueFrom(
             this.natsClient.send('findOneProduct', productId).pipe(
@@ -194,58 +271,35 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
             )
           );
 
-          if (createMovementDto.originWarehouseId) {
-            // await this.verifyStockForMovement(movementType, productId, warehouseStock, adjustmentType);
-            const sourceStock = await this.handleRpcError(
-              'products.verifyStockWarehouse',
-              {
-                productId,
-                warehouseId: createMovementDto.originWarehouseId,
-              }
-            );
+          const productName = product?.name ?? `[${productId}]`;
+          // const unitAbbreviation = product?.unit?.abbreviation ?? '';
+          const unitDisplay = product?.unit?.abbreviation ? ` ${product.unit.abbreviation}` : '';
 
-            if (parseFloat(sourceStock) < parseFloat(totalExpectedQuantity)) {
-              const warehouse = await firstValueFrom(
-                this.natsClient.send('findOneWarehouse', createMovementDto.originWarehouseId).pipe(
-                  catchError((error) => {
-                    console.error('Error fetching warehouse:', error);
-                    return of(null);
-                  })
-                )
-              );
-              throw new RpcException({
-                message: `No hay suficiente stock en el almacén ${(warehouse ? warehouse.name : createMovementDto.originWarehouseId)} para el producto ${product ? product.name : productId}. Stock disponible: ${parseFloat(sourceStock)}. Stock requerido: ${parseFloat(totalExpectedQuantity)}.`,
-                statusCode: HttpStatus.BAD_REQUEST,
-              });
-            }
+          // Verificar stock en las ubicaciones de origen
+          const locations = [
+            createMovementDto.originWarehouseId && { id: createMovementDto.originWarehouseId, type: 'WAREHOUSE' as const },
+            createMovementDto.originBranchId && { id: createMovementDto.originBranchId, type: 'BRANCH' as const },
+          ].filter(Boolean) as { id: string; type: 'WAREHOUSE' | 'BRANCH' }[];
+
+          for (const { id, type } of locations) {
+            const { name: locName } = await this.getLocationInfo(type, id); // helper opcional
+            const msg = await this.verifyStock({
+              productId,
+              productName,
+              unitDisplay,
+              locationId: id,
+              locationType: type,
+              locationName: locName,
+              requiredQty,
+            });
+            if (msg) errorsStock.push(msg);
           }
-
-          if (createMovementDto.originBranchId) {
-            // await this.verifyStockForMovement(movementType, productId, branchStock, adjustmentType);
-            const sourceStock = await this.handleRpcError(
-              'products.verifyStockBranch',
-              {
-                productId,
-                branchId: createMovementDto.originBranchId,
-              }
-            );
-
-            if (parseFloat(sourceStock) < parseFloat(totalExpectedQuantity)) {
-              const branch = await firstValueFrom(
-                this.natsClient.send('findOneBranch', createMovementDto.originBranchId).pipe(
-                  catchError((error) => {
-                    console.error('Error fetching branch:', error);
-                    return of(null);
-                  })
-                )
-              );
-
-              throw new RpcException({
-                message: `No hay suficiente stock en la sucursal ${(branch ? branch.name : createMovementDto.originWarehouseId)} para el producto ${product ? product.name : productId}. Stock disponible: ${parseFloat(sourceStock)}. Stock requerido: ${parseFloat(totalExpectedQuantity)}.`,
-                statusCode: HttpStatus.BAD_REQUEST,
-              });
-            }
-          }
+        }
+        if (errorsStock.length > 0) {
+          throw new RpcException({
+            message: errorsStock,
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
         }
       }
 
@@ -312,50 +366,50 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
         try {
           // Procesar actualización de stock en almacenes
           if (stockUpdates.length > 0 && newMovement.status === 'COMPLETED') {
-            const stockData: { productId: string, updateId: string, quantity: number, branchOrWarehouse: 'WAREHOUSE' | 'BRANCH' }[] = [];
+            const stockPayload: { productId: string, locationType: 'BRANCH' | 'WAREHOUSE', updateId: string, quantity: number }[] = [];
 
             stockUpdates.forEach(stock => {
               // Descontar stock de almacén de Origen
               if (stock.originWarehouseId) {
-                stockData.push({
+                stockPayload.push({
                   productId: stock.productId,
                   updateId: stock.originWarehouseId,
                   quantity: -stock.quantity,
-                  branchOrWarehouse: 'WAREHOUSE'
+                  locationType: 'WAREHOUSE'
                 });
               }
               // Descontar stock de Sucursal de origen
               if (stock.originBranchId) {
-                stockData.push({
+                stockPayload.push({
                   productId: stock.productId,
                   updateId: stock.originBranchId,
                   quantity: -stock.quantity,
-                  branchOrWarehouse: 'BRANCH'
+                  locationType: 'BRANCH'
                 });
               }
 
               // Sumar stock a Almacén de destino
               if (stock.destinationWarehouseId) {
-                stockData.push({
+                stockPayload.push({
                   productId: stock.productId,
                   updateId: stock.destinationWarehouseId,
                   quantity: stock.quantity,
-                  branchOrWarehouse: 'WAREHOUSE'
+                  locationType: 'WAREHOUSE'
                 });
               }
 
               if (stock.destinationBranchId) {
-                stockData.push({
+                stockPayload.push({
                   productId: stock.productId,
                   updateId: stock.destinationBranchId,
                   quantity: stock.quantity,
-                  branchOrWarehouse: 'BRANCH'
+                  locationType: 'BRANCH'
                 });
               }
             });
 
-            if (stockData.length > 0) {
-              await this.handleRpcError('products.updateOrCreateStock', stockData);
+            if (stockPayload.length > 0) {
+              await this.handleRpcError('products.updateOrCreateStock', stockPayload);
             }
           }
 
@@ -675,7 +729,7 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
         updateDetailsAndStatusDto.status === StatusInventoryMovement.COMPLETED &&
         (movementExists?.movementType !== InventoryMovementType.OUTCOME &&
           movementExists?.movementType !== InventoryMovementType.TRANSFER &&
-          movementExists.adjustment?.adjustmentType === AdjustmentType.OUTCOME
+          !movementExists.adjustment
         ) &&
         (!updateDetailsAndStatusDto.inventoryMovementDetails ||
           updateDetailsAndStatusDto.inventoryMovementDetails.some(
@@ -904,7 +958,7 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
 
       // Validar que haya un origen y destino dependiendo del tipo
       // Validar que originBranchId no sea igual a destinationBranchId
-      if (updateDetailsAndStatusDto.status === StatusInventoryMovement.COMPLETED) {
+      if (updateDetailsAndStatusDto.status === StatusInventoryMovement.COMPLETED && movementExists.movementType === InventoryMovementType.INCOME) {
         if (movementExists.adjustment === null) {
           const errors = [];
           for (const detail of updateDetailsAndStatusDto.inventoryMovementDetails) {
@@ -939,7 +993,8 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
       // return updateDetailsAndStatusDto
 
       // Verificar stock antes de actualizar
-      if (movementExists && updateDetailsAndStatusDto.inventoryMovementDetails && updateDetailsAndStatusDto.inventoryMovementDetails.length > 0) {
+      if (updateDetailsAndStatusDto.status === StatusInventoryMovement.COMPLETED && movementExists && updateDetailsAndStatusDto.inventoryMovementDetails && updateDetailsAndStatusDto.inventoryMovementDetails.length > 0) {
+        const errorsStock: string[] = [];
         for (const detail of updateDetailsAndStatusDto.inventoryMovementDetails) {
           const { originBranchId, originWarehouseId } = movementExists;
 
@@ -954,231 +1009,249 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
             )
           );
 
-          const expectedQuantity = movementExists.inventoryMovementDetails.find(d => d.id === detail.id).totalExpectedQuantity
           // Determinar deliveredQuantity basado en deliveryStatus
           // let deliveredQuantity: Decimal | undefined = this.determineDeliveredQuantity(expectedQuantity, detail.deliveryStatus, new Decimal(detail.deliveredQuantity));
           // Sumar todas las cantidades entregadas de los suppliers
-          const totalDeliveredQuantity = detail.totalDeliveredQuantity ?? (detail.detailSuppliers && Array.isArray(detail.detailSuppliers) && detail.detailSuppliers.length > 0
-            ? detail.detailSuppliers.reduce(
-              (sum, supplier) => sum.plus(new Decimal(supplier.deliveredQuantity || 0)),
-              new Decimal(0)
-            )
-            : undefined);
+          const totalDeliveredQuantity = detail.totalDeliveredQuantity !== undefined && detail.totalDeliveredQuantity !== null
+            ? Number(detail.totalDeliveredQuantity)
+            : (detail.detailSuppliers && Array.isArray(detail.detailSuppliers) && detail.detailSuppliers.length > 0
+              ? detail.detailSuppliers.reduce(
+                (sum, supplier) => sum + Number(supplier.deliveredQuantity || 0),
+                0
+              )
+              : undefined);
 
-          if (originWarehouseId && totalDeliveredQuantity) {
-            // await this.verifyStockForMovement(movementType, productId, warehouseStock, adjustmentType);
-            const sourceStock = await this.handleRpcError(
-              'products.verifyStockWarehouse',
-              {
+
+          const productName = product?.name ?? `[${productId}]`;
+          // const unitAbbreviation = product?.unit?.abbreviation ?? '';
+          const unitDisplay = product?.unit?.abbreviation ? ` ${product.unit.abbreviation}` : '';
+
+          if (totalDeliveredQuantity) {// Verificar stock en las ubicaciones de origen
+            const locations = [
+              originWarehouseId && { id: originWarehouseId, type: 'WAREHOUSE' as const },
+              originBranchId && { id: originBranchId, type: 'BRANCH' as const },
+            ].filter(Boolean) as { id: string; type: 'WAREHOUSE' | 'BRANCH' }[];
+
+            for (const { id, type } of locations) {
+              const { name: locName } = await this.getLocationInfo(type, id); // helper opcional
+              const msg = await this.verifyStock({
                 productId,
-                warehouseId: movementExists.originWarehouseId,
-              }
-            );
-
-            // Verifica si el stock es menor al esperado
-            if (new Decimal(sourceStock).lessThan(totalDeliveredQuantity)) {
-              const warehouse = await firstValueFrom(
-                this.natsClient.send('findOneWarehouse', movementExists.originWarehouseId).pipe(
-                  catchError((error) => {
-                    console.error('Error fetching warehouse:', error);
-                    return of(null);
-                  })
-                )
-              );
-              throw new RpcException({
-                message: `No hay suficiente stock en el almacén (${(warehouse ? warehouse.name : movementExists.originWarehouseId)}) para el producto (${product ? product.name : productId}). Stock disponible: ${parseFloat(sourceStock)}. Stock requerido: ${totalDeliveredQuantity}.`,
-                statusCode: HttpStatus.BAD_REQUEST,
+                productName,
+                unitDisplay,
+                locationId: id,
+                locationType: type,
+                locationName: locName,
+                requiredQty: totalDeliveredQuantity,
               });
+              if (msg) errorsStock.push(msg);
             }
           }
-
-          if (originBranchId && totalDeliveredQuantity) {
-            // await this.verifyStockForMovement(movementType, productId, branchStock, adjustmentType);
-            const sourceStock = await this.handleRpcError(
-              'products.verifyStockBranch',
-              {
-                productId,
-                branchId: movementExists.originBranchId,
-              }
-            );
-
-            if (new Decimal(sourceStock).lessThan(totalDeliveredQuantity)) {
-              const branch = await firstValueFrom(
-                this.natsClient.send('findOneBranch', movementExists.originBranchId).pipe(
-                  catchError((error) => {
-                    console.error('Error fetching branch:', error);
-                    return of(null);
-                  })
-                )
-              );
-
-              throw new RpcException({
-                message: `No hay suficiente stock en la sucursal (${(branch ? branch.name : movementExists.originWarehouseId)}) para el producto (${product ? product.name : productId}). Stock disponible: ${parseFloat(sourceStock)}. Stock requerido: ${totalDeliveredQuantity}.`,
-                statusCode: HttpStatus.BAD_REQUEST,
-              });
-            }
-          }
+        }
+        if (errorsStock.length > 0) {
+          throw new RpcException({
+            message: errorsStock,
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
         }
       }
 
       // Iniciar una transacción para actualizar el movimiento y sus detalles
-      await this.prisma.$transaction(async (prisma) => {
-        // 1. Actualiza los detalles (sin detailSuppliers)
-        await prisma.inventoryMovement.update({
-          where: { id },
-          data: {
-            status: updateDetailsAndStatusDto.status,
-            updatedByUserId: updateDetailsAndStatusDto.updatedByUserId,
-            ...(updateDetailsAndStatusDto.inventoryMovementDetails &&
-              updateDetailsAndStatusDto.inventoryMovementDetails.length > 0 && {
-              inventoryMovementDetails: {
-                updateMany: updateDetailsAndStatusDto.inventoryMovementDetails
-                  // Filtra solo los detalles que tienen id (no nuevos)
-                  .filter(detail => !!detail.id)
-                  .map((detail) => {
-                    const dbDetail = movementExists.inventoryMovementDetails.find(d => d.id === detail.id);
-                    const totalExpectedQuantity = dbDetail?.totalExpectedQuantity ?? new Decimal(0);
+      let updatedMovement = null;
+      try {
+        updatedMovement = await this.prisma.$transaction(async (prisma) => {
+          // 1. Actualiza los detalles (sin detailSuppliers)
+          await prisma.inventoryMovement.update({
+            where: { id },
+            data: {
+              status: updateDetailsAndStatusDto.status,
+              updatedByUserId: updateDetailsAndStatusDto.updatedByUserId,
+              ...(updateDetailsAndStatusDto.inventoryMovementDetails &&
+                updateDetailsAndStatusDto.inventoryMovementDetails.length > 0 && {
+                inventoryMovementDetails: {
+                  updateMany: updateDetailsAndStatusDto.inventoryMovementDetails
+                    // Filtra solo los detalles que tienen id (no nuevos)
+                    .filter(detail => !!detail.id)
+                    .map((detail) => {
+                      const dbDetail = movementExists.inventoryMovementDetails.find(d => d.id === detail.id);
+                      const totalExpectedQuantity = dbDetail?.totalExpectedQuantity ?? new Decimal(0);
 
-                    // Sumar todas las cantidades entregadas de los suppliers o usar el totalDeliveredQuantity del DTO si existe
-                    const totalDeliveredQuantity = detail.totalDeliveredQuantity !== undefined && detail.totalDeliveredQuantity !== null
-                      ? new Decimal(detail.totalDeliveredQuantity)
-                      : (detail.detailSuppliers ?? []).reduce(
-                        (sum, supplier) => sum.plus(new Decimal(supplier.deliveredQuantity || 0)),
-                        new Decimal(0)
-                      );
+                      // Sumar todas las cantidades entregadas de los suppliers o usar el totalDeliveredQuantity del DTO si existe
+                      const totalDeliveredQuantity = detail.totalDeliveredQuantity !== undefined && detail.totalDeliveredQuantity !== null
+                        ? new Decimal(detail.totalDeliveredQuantity)
+                        : (detail.detailSuppliers ?? []).reduce(
+                          (sum, supplier) => sum.plus(new Decimal(supplier.deliveredQuantity || 0)),
+                          new Decimal(0)
+                        );
 
-                    let deliveryStatus: DeliveryStatus;
-                    if (totalDeliveredQuantity.equals(0)) { // Si no se ha entregado nada
-                      deliveryStatus = DeliveryStatus.NOT_DELIVERED;
-                    } else if (totalDeliveredQuantity.equals(totalExpectedQuantity)) { // Si se ha entregado todo lo esperado
-                      deliveryStatus = DeliveryStatus.COMPLETE;
-                    } else if (totalDeliveredQuantity.greaterThan(totalExpectedQuantity)) { // Si se ha entregado más de lo esperado
-                      deliveryStatus = DeliveryStatus.OVER_DELIVERED;
-                    } else if (totalDeliveredQuantity.greaterThan(0) && totalDeliveredQuantity.lessThan(totalExpectedQuantity)) {
-                      deliveryStatus = DeliveryStatus.PARTIAL;
-                    } else { // Si no se ha entregado nada o no se ha definido el estado
-                      deliveryStatus = DeliveryStatus.PENDING;
-                    }
+                      let deliveryStatus: DeliveryStatus;
+                      if (totalDeliveredQuantity.equals(0)) { // Si no se ha entregado nada
+                        deliveryStatus = DeliveryStatus.NOT_DELIVERED;
+                      } else if (totalDeliveredQuantity.equals(totalExpectedQuantity)) { // Si se ha entregado todo lo esperado
+                        deliveryStatus = DeliveryStatus.COMPLETE;
+                      } else if (totalDeliveredQuantity.greaterThan(totalExpectedQuantity)) { // Si se ha entregado más de lo esperado
+                        deliveryStatus = DeliveryStatus.OVER_DELIVERED;
+                      } else if (totalDeliveredQuantity.greaterThan(0) && totalDeliveredQuantity.lessThan(totalExpectedQuantity)) {
+                        deliveryStatus = DeliveryStatus.PARTIAL;
+                      } else { // Si no se ha entregado nada o no se ha definido el estado
+                        deliveryStatus = DeliveryStatus.PENDING;
+                      }
 
-                    return {
-                      where: { id: detail.id },
-                      data: {
-                        productId: detail.productId,
-                        totalDeliveredQuantity: totalDeliveredQuantity.toString(),
-                        deliveryStatus,
-                      },
-                    };
-                  }),
-              },
-            }),
-          }
-        });
-
-        // 2. Actualiza y crea los detailSuppliers por separado
-        if (updateDetailsAndStatusDto.inventoryMovementDetails && updateDetailsAndStatusDto.inventoryMovementDetails.length > 0) {
-          for (const detail of updateDetailsAndStatusDto.inventoryMovementDetails) {
-            const dtoSuppliers = detail.detailSuppliers ?? [];
-
-            // 1. Eliminar los suppliers que ya no están en el DTO
-            const dtoSupplierIds = dtoSuppliers.filter(s => s.id).map(s => s.id);
-            await this.prisma.inventoryMovementDetailSupplier.deleteMany({
-              where: {
-                inventoryMovementDetailId: detail.id,
-                ...(dtoSupplierIds.length > 0 && { NOT: { id: { in: dtoSupplierIds } } }),
-              }
-            });
-
-            // 2. Actualizar los existentes
-            for (const supplier of dtoSuppliers.filter(s => s.id)) {
-              await this.prisma.inventoryMovementDetailSupplier.update({
-                where: { id: supplier.id },
-                data: {
-                  supplierId: supplier.supplierId,
-                  deliveredQuantity: supplier.deliveredQuantity,
-                  // otros campos si aplica
-                  updatedByUserId: updateDetailsAndStatusDto.updatedByUserId, // ejemplo de trazabilidad
-                }
-              });
+                      return {
+                        where: { id: detail.id },
+                        data: {
+                          productId: detail.productId,
+                          totalDeliveredQuantity: totalDeliveredQuantity.toString(),
+                          deliveryStatus,
+                        },
+                      };
+                    }),
+                },
+              }),
             }
+          });
 
-            // 3. Crear los nuevos
-            for (const supplier of dtoSuppliers.filter(s => !s.id)) {
-              await this.prisma.inventoryMovementDetailSupplier.create({
-                data: {
+          // 2. Actualiza y crea los detailSuppliers por separado
+          if (updateDetailsAndStatusDto.inventoryMovementDetails && updateDetailsAndStatusDto.inventoryMovementDetails.length > 0) {
+            for (const detail of updateDetailsAndStatusDto.inventoryMovementDetails) {
+              const dtoSuppliers = detail.detailSuppliers ?? [];
+
+              // 1. Eliminar los suppliers que ya no están en el DTO
+              const dtoSupplierIds = dtoSuppliers.filter(s => s.id).map(s => s.id);
+              await this.prisma.inventoryMovementDetailSupplier.deleteMany({
+                where: {
                   inventoryMovementDetailId: detail.id,
-                  supplierId: supplier.supplierId,
-                  deliveredQuantity: supplier.deliveredQuantity,
-                  // otros campos si aplica
-                  createdByUserId: updateDetailsAndStatusDto.updatedByUserId, // ejemplo de trazabilidad
+                  ...(dtoSupplierIds.length > 0 && { NOT: { id: { in: dtoSupplierIds } } }),
                 }
               });
+
+              // 2. Actualizar los existentes
+              for (const supplier of dtoSuppliers.filter(s => s.id)) {
+                await this.prisma.inventoryMovementDetailSupplier.update({
+                  where: { id: supplier.id },
+                  data: {
+                    supplierId: supplier.supplierId,
+                    deliveredQuantity: supplier.deliveredQuantity,
+                    // otros campos si aplica
+                    updatedByUserId: updateDetailsAndStatusDto.updatedByUserId, // ejemplo de trazabilidad
+                    deliveryDate: supplier.deliveryDate !== undefined ? supplier.deliveryDate === null ? null : new Date(supplier.deliveryDate) : undefined,
+                  }
+                });
+              }
+
+              // 3. Crear los nuevos
+              for (const supplier of dtoSuppliers.filter(s => !s.id)) {
+                await this.prisma.inventoryMovementDetailSupplier.create({
+                  data: {
+                    inventoryMovementDetailId: detail.id,
+                    supplierId: supplier.supplierId,
+                    deliveredQuantity: supplier.deliveredQuantity,
+                    // otros campos si aplica
+                    createdByUserId: updateDetailsAndStatusDto.updatedByUserId, // ejemplo de trazabilidad
+                    deliveryDate: supplier.deliveryDate ? new Date(supplier.deliveryDate) : undefined,
+                  }
+                });
+              }
             }
           }
-        }
-      });
 
-      // Consulta el movimiento actualizado con detalles y suppliers
-      const updatedMovement = await this.prisma.inventoryMovement.findUnique({
-        where: { id },
-        include: {
-          inventoryMovementDetails: {
+
+          // Consulta el movimiento actualizado con detalles y suppliers
+          const updatedMovementRecent = await this.prisma.inventoryMovement.findUnique({
+            where: { id },
             include: {
-              detailSuppliers: true,
+              inventoryMovementDetails: {
+                include: {
+                  detailSuppliers: true,
+                }
+              },
+              adjustment: true,
             }
-          },
-          adjustment: true,
-        }
-      });
+          });
 
-      // Verificar si el estado es COMPLETED para actualizar el stock
-      if (updateDetailsAndStatusDto.status === StatusInventoryMovement.COMPLETED) {
-        // Actualizar stock
-        updatedMovement.inventoryMovementDetails.forEach(detail => {
-          // Procesar actualización de stock en almacenes
-          const stockData = [];
+          // Verificar si el estado es COMPLETED para actualizar el stock
+          if (updateDetailsAndStatusDto.status === StatusInventoryMovement.COMPLETED) {
+            // Actualizar stock
+            for (const detail of updateDetailsAndStatusDto.inventoryMovementDetails) {
+              // Procesar actualización de stock en almacenes
+              const stockData: { productId: string, locationType: 'BRANCH' | 'WAREHOUSE', updateId: string, quantity: number }[] = [];
 
-          if (detail.totalDeliveredQuantity) {
-            if (updatedMovement.originWarehouseId) {
-              stockData.push({
-                productId: detail.productId,
-                updateId: updatedMovement.originWarehouseId,
-                quantity: -detail.totalDeliveredQuantity,
-                branchOrWarehouse: 'WAREHOUSE'
-              });
-            }
-            if (updatedMovement.originBranchId) {
-              stockData.push({
-                productId: detail.productId,
-                updateId: updatedMovement.originBranchId,
-                quantity: -detail.totalDeliveredQuantity,
-                branchOrWarehouse: 'BRANCH'
-              });
-            }
-            if (updatedMovement.destinationWarehouseId) {
-              stockData.push({
-                productId: detail.productId,
-                updateId: updatedMovement.destinationWarehouseId,
-                quantity: detail.totalDeliveredQuantity,
-                branchOrWarehouse: 'WAREHOUSE'
-              });
-            }
-            if (updatedMovement.destinationBranchId) {
-              stockData.push({
-                productId: detail.productId,
-                updateId: updatedMovement.destinationBranchId,
-                quantity: detail.totalDeliveredQuantity,
-                branchOrWarehouse: 'BRANCH'
-              });
-            }
+              // Sumar todas las cantidades entregadas de los suppliers o usar el totalDeliveredQuantity del DTO si existe
+              const totalDeliveredQuantity = detail.totalDeliveredQuantity !== undefined && detail.totalDeliveredQuantity !== null
+                ? new Decimal(detail.totalDeliveredQuantity)
+                : (detail.detailSuppliers ?? []).reduce(
+                  (sum, supplier) => sum.plus(new Decimal(supplier.deliveredQuantity || 0)),
+                  new Decimal(0)
+                );
 
-            // Llamar al servicio para actualizar el stock
-            if (stockData.length > 0) {
-              this.handleRpcError('products.updateOrCreateStock', stockData);
-            }
+              console.error(totalDeliveredQuantity)
+
+
+              // Si totalDeliveredQuantity (0), no actualizamos el stock
+              if (!totalDeliveredQuantity.equals(0)) {
+                if (updatedMovementRecent.originWarehouseId) {
+                  stockData.push({
+                    productId: detail.productId,
+                    updateId: updatedMovementRecent.originWarehouseId,
+                    quantity: -totalDeliveredQuantity.toNumber(),
+                    locationType: 'WAREHOUSE'
+                  });
+                }
+                if (updatedMovementRecent.originBranchId) {
+                  stockData.push({
+                    productId: detail.productId,
+                    updateId: updatedMovementRecent.originBranchId,
+                    quantity: -totalDeliveredQuantity.toNumber(),
+                    locationType: 'BRANCH'
+                  });
+                }
+                if (updatedMovementRecent.destinationWarehouseId) {
+                  stockData.push({
+                    productId: detail.productId,
+                    updateId: updatedMovementRecent.destinationWarehouseId,
+                    quantity: totalDeliveredQuantity.toNumber(),
+                    locationType: 'WAREHOUSE'
+                  });
+                }
+                if (updatedMovementRecent.destinationBranchId) {
+                  stockData.push({
+                    productId: detail.productId,
+                    updateId: updatedMovementRecent.destinationBranchId,
+                    quantity: totalDeliveredQuantity.toNumber(),
+                    locationType: 'BRANCH'
+                  });
+                }
+
+                // Llamar al servicio para actualizar el stock
+                if (stockData.length > 0) {
+                  firstValueFrom(this.natsClient.send('products.updateOrCreateStockLocations', stockData).pipe(
+                    catchError((error) => {
+                      console.error('Error products.updateOrCreateStockLocations:', error);
+                      throw new RpcException({
+                        message: error?.message || 'Error al actualizar el stock',
+                        status: error?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR
+                      })
+                      // return of(0);
+                    })
+                  ));
+                }
+              }
+
+            };
           }
-
-        })
+          return updatedMovementRecent;
+        });
+      } catch (error) {
+        console.error('Error en updateDetailsAndStatus:', error);
+        if (error instanceof RpcException) throw error;
+        // Si ocurre un error, la transacción se revierte automáticamente por Prisma
+        throw new RpcException({
+          message: error?.message || 'Error al actualizar el movimiento y detalles.',
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+        });
       }
+
+
+
 
       // Obtener los IDs únicos de sucursales y almacenes
       const branchIds = [updatedMovement.originBranchId, updatedMovement.destinationBranchId].filter(Boolean);
@@ -1291,6 +1364,169 @@ async handleRpcError<T = any>(pattern: string, data: any): Promise<T> {
       console.error('Error al eliminar el detalle de proveedor:', error);
       throw new RpcException({
         message: 'Error al eliminar el detalle de proveedor.',
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  async getMonthlyMovementsCounts(dto: MovementsMonthlySummaryDto) {
+    try {
+      const { destinationBranchId, destinationWarehouseId, originBranchId, originWarehouseId, createdByUserId, year: yyyy, month, startDate, endDate, movementType, adjustmentType } = dto;
+      // Helper: Inicializa las estadísticas por estado
+      const initStatusCount = () => {
+        return {
+          PENDING: 0,
+          COMPLETED: 0,
+          CANCELED: 0,
+          ACCEPTED: 0,
+        };
+      }
+
+      const branchIds = []
+      if (originBranchId)
+        branchIds.push(originBranchId)
+      if (destinationBranchId)
+        branchIds.push(destinationBranchId)
+
+      // Validaciones remotas
+      if (originBranchId || destinationWarehouseId) {
+        await firstValueFrom(
+          this.natsClient.send('branches.validateIds', branchIds).pipe(
+            catchError((error) => {
+              console.error('Error al validar branchIds:', error);
+              throw new RpcException({
+                message: error?.message || 'Error al validar sucursal.',
+                statusCode: error?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR,
+              });
+            })
+          )
+        );
+      }
+
+      const warehouseIds = []
+      if (originWarehouseId)
+        warehouseIds.push(originWarehouseId)
+      if (destinationWarehouseId)
+        warehouseIds.push(destinationWarehouseId)
+
+      // Validaciones remotas
+      if (originBranchId || destinationWarehouseId) {
+        await firstValueFrom(
+          this.natsClient.send('warehouses.validateIds', warehouseIds).pipe(
+            catchError((error) => {
+              console.error('Error al validar branchIds:', error);
+              throw new RpcException({
+                message: error?.message || 'Error al validar sucursal.',
+                statusCode: error?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR,
+              });
+            })
+          )
+        );
+      }
+
+      if (createdByUserId) {
+        await firstValueFrom(
+          this.natsClient.send('auth.user.findOne', createdByUserId).pipe(
+            catchError((error) => {
+              console.error('Error al validar usuario:', error);
+              throw new RpcException({
+                message: error?.message || 'Error al validar usuario.',
+                statusCode: error?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR,
+              });
+            })
+          )
+        );
+      }
+
+      const year = yyyy || new Date().getFullYear();
+      let gte: Date;
+      let lt: Date;
+
+      if (startDate && endDate) {
+        gte = new Date(startDate);
+        lt = new Date(endDate);
+        lt.setDate(lt.getDate() + 1); // incluir el día de endDate
+      } else if (month) {
+        // Si se especifica mes (1-12), usar ese mes del año
+        gte = new Date(Date.UTC(year, month - 1, 1));
+        lt = new Date(Date.UTC(year, month, 1));
+      } else {
+        // Año completo
+        gte = new Date(Date.UTC(year, 0, 1));
+        lt = new Date(Date.UTC(year + 1, 0, 1));
+      }
+
+      const where: any = {
+        createdAt: {
+          gte,
+          lt,
+        },
+      };
+
+      if (originBranchId || originWarehouseId || destinationBranchId || destinationWarehouseId) {
+        where.OR = [
+          { originBranchId: originBranchId ?? undefined },
+          { destinationBranchId: destinationBranchId ?? undefined },
+          { originWarehouseId: originWarehouseId ?? undefined },
+          { destinationWarehouseId: destinationWarehouseId ?? undefined }
+        ];
+      };
+      if (createdByUserId) where.createdByUserId = createdByUserId;
+      if (movementType && movementType !== 'all') where.movementType = movementType;
+
+      // Agregar filtro por adjustmentType si se especifica
+      if (adjustmentType && adjustmentType !== 'all') {
+        if (movementType && movementType !== 'ADJUSTMENT') {
+          throw new RpcException({
+            message: 'El filtro adjustmentType solo es válido cuando movementType es ADJUSTMENT.',
+            statusCode: HttpStatus.BAD_REQUEST,
+          });
+        }
+        where.movementType = 'ADJUSTMENT';
+        where.adjustment = { adjustmentType };
+      }
+
+      const movements = await this.prisma.inventoryMovement.findMany({
+        where,
+        select: {
+          createdAt: true,
+          status: true,
+        },
+      });
+
+      const monthCounts: Record<string, Record<string, number>> = {
+        "Enero": initStatusCount(),
+        "Febrero": initStatusCount(),
+        "Marzo": initStatusCount(),
+        "Abril": initStatusCount(),
+        "Mayo": initStatusCount(),
+        "Junio": initStatusCount(),
+        "Julio": initStatusCount(),
+        "Agosto": initStatusCount(),
+        "Septiembre": initStatusCount(),
+        "Octubre": initStatusCount(),
+        "Noviembre": initStatusCount(),
+        "Diciembre": initStatusCount(),
+      };
+
+      const monthNames = Object.keys(monthCounts);
+
+      for (const movement of movements) {
+        const monthIndex = movement.createdAt.getUTCMonth();
+        const monthName = monthNames[monthIndex];
+        const orderStatus = movement.status;
+
+        if (monthCounts[monthName][orderStatus] !== undefined) {
+          monthCounts[monthName][orderStatus]++;
+        }
+      }
+
+      return monthCounts;
+    } catch (error) {
+      if (error instanceof RpcException) throw error;
+      console.error('Error en getMonthlyProductionCounts:', error);
+      throw new RpcException({
+        message: 'Error al obtener el resumen mensual de movimientos de inventario.',
         statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       });
     }

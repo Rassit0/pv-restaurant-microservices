@@ -73,7 +73,7 @@ model InventoryMovement {
   createdByUserId String    @map("created_by_user_id") // Usuario que realizó el movimiento
   updatedByUserId String?   @map("updated_by_user_id") // Usuario que realizó el movimiento
   createdAt       DateTime  @default(now()) @map("created_at") // Fecha de creación
-  deliveryDate    DateTime? @map("delivery_date") // Fecha de entrega
+  generalDeliveryDate    DateTime @map("general_delivery_date") // Fecha de entrega
   updatedAt       DateTime  @updatedAt @map("updated_at") // Última actualización
 
   // Campos de origen y destino
@@ -99,7 +99,7 @@ model InventoryMovement {
   @@index([destinationWarehouseId]) // Índice para búsquedas rápidas por almacén de destino
   @@index([status]) // Índice para búsquedas rápidas por estado
   @@index([createdAt]) // Índice para búsquedas rápidas por fecha de creación
-  @@index([deliveryDate]) // Índice para búsquedas rápidas por fecha de entrega
+  @@index([generalDeliveryDate]) // Índice para búsquedas rápidas por fecha de entrega
   @@map("inventory_movements")
 }
 
@@ -164,7 +164,9 @@ model InventoryMovementDetailSupplier {
   /// Cantidad que efectivamente se recibió
   deliveredQuantity Decimal? @map("delivered_quantity") @db.Decimal(10, 2)
 
-  
+  /// Fecha de entrega específica para este proveedor (opcional)
+  deliveryDate DateTime? @map("delivery_date")
+
   // Campos para auditoría
   createdByUserId String   @map("created_by_user_id") // Usuario que realizó el movimiento
   updatedByUserId String?  @map("updated_by_user_id") // Usuario que realizó el movimiento
